@@ -1,5 +1,5 @@
-﻿// This script exports photoshop layers as individual PNGs. It also
-// writes a JSON file that can be imported into Spine where the images
+﻿// This script exports Adobe PhotoShop layers as individual PNGs. It also
+// writes a JSON file which can be imported into Spine where the images
 // will be displayed in the same positions and draw order.
 
 // Setting defaults.
@@ -210,6 +210,7 @@ function run () {
 		var name = decodeURI(originalDoc.name);
 		name = name.substring(0, name.indexOf("."));
 		var file = new File(absProjectDir + name + ".json");
+		file.encoding = "UTF-8";
 		file.remove();
 		file.open("w", "TEXT");
 		file.lineFeed = "\n";
