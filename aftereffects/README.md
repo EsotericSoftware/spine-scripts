@@ -30,6 +30,8 @@ Some of these limitations are easier to work around than others:
 * For particle effects, render those out as a separate PNG sequence as well. Use a lower resolution if you can to save texture space.
 * Same goes for glows, shadows, and other effects. They can be rendered out, added as another layer, and faded in and out using opacity, often at lower resolution.
 
+If running the script from the ExtendScript Toolkit, ensure `Do Not Break on Guarded Exceptions` is checked under the `Debug` menu.
+
 ## psd_to_spine.jsx
 
 This script differs from the [PhotoshopToSpine script](https://github.com/EsotericSoftware/spine-scripts/blob/master/photoshop/PhotoshopToSpine.jsx) to work with the new Photoshop CC [image generator](http://blogs.adobe.com/photoshopdotcom/2013/09/introducing-adobe-generator-for-photoshop-cc.html) feature.
