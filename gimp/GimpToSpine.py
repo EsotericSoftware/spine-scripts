@@ -27,6 +27,9 @@ SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
 CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+Original hosting location:
+https://github.com/clofresh/gimp-spine
 '''
 
 '''
@@ -34,9 +37,6 @@ Exports layers to images and outputs a Spine JSON file.
 http://esotericsoftware.com/spine-json-format
 
 Run from the GIMP menu option: File -> Export to Spine
-
-Original hosting location:
-https://github.com/clofresh/gimp-spine
 '''
 
 import json
