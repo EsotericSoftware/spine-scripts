@@ -232,6 +232,10 @@ function run () {
 // Settings dialog and settings:
 
 function showSettingsDialog () {
+	if (version < 9) {
+		alert("Photoshop CS2 or later is required.");
+		return;
+	}
 	if (!originalDoc) {
 		alert("Please open a document before running the PhotoshopToSpine script.");
 		return;
