@@ -1,45 +1,41 @@
-﻿// This script exports Adobe PhotoShop layers as individual PNGs. It also
+﻿// This script exports Adobe Photoshop layers as individual PNGs. It also
 // writes a JSON file which can be imported into Spine where the images
 // will be displayed in the same positions and draw order.
 
-// Setting defaults.
-var writePngs = true;
-var writeTemplate = false;
-var writeJson = true;
-var ignoreHiddenLayers = true;
-var pngScale = 1;
-var groupsAsSkins = false;
-var useRulerOrigin = false;
-var imagesDir = "./images/";
-var projectDir = "";
-var padding = 1;
+// Run by double clicking from OS file explorer (CS2+).
+#target photoshop
+app.bringToFront();
 
-// IDs for saving settings.
-const settingsID = stringIDToTypeID("settings");
-const writePngsID = stringIDToTypeID("writePngs");
-const writeTemplateID = stringIDToTypeID("writeTemplate");
-const writeJsonID = stringIDToTypeID("writeJson");
-const ignoreHiddenLayersID = stringIDToTypeID("ignoreHiddenLayers");
-const groupsAsSkinsID = stringIDToTypeID("groupsAsSkins");
-const useRulerOriginID = stringIDToTypeID("useRulerOrigin");
-const pngScaleID = stringIDToTypeID("pngScale");
-const imagesDirID = stringIDToTypeID("imagesDir");
-const projectDirID = stringIDToTypeID("projectDir");
-const paddingID = stringIDToTypeID("padding");
+var version = parseInt(app.version);
 
 var originalDoc;
 try {
 	originalDoc = app.activeDocument;
 } catch (ignored) {}
-var settings, progress;
-loadSettings();
-showDialog();
 
+var defaultSettings = {
+	writePngs: true,
+	writeTemplate: false,
+	writeJson: true,
+	ignoreHiddenLayers: true,
+	pngScale: 1,
+	groupsAsSkins: false,
+	useRulerOrigin: false,
+	imagesDir: "./images/",
+	projectDir: "",
+	padding: 1
+};
+var settings = loadSettings();
+showSettingsDialog();
+
+var progress, cancel;
 function run () {
+	showProgressDialog();
+
 	// Output dirs.
-	var absProjectDir = absolutePath(projectDir);
+	var absProjectDir = absolutePath(settings.projectDir);
 	new Folder(absProjectDir).create();
-	var absImagesDir = absolutePath(imagesDir);
+	var absImagesDir = absolutePath(settings.imagesDir);
 	var imagesFolder = new Folder(absImagesDir);
 	imagesFolder.create();
 	var relImagesDir = imagesFolder.getRelativeURI(absProjectDir);
@@ -47,19 +43,19 @@ function run () {
 
 	// Get ruler origin.
 	var xOffSet = 0, yOffSet = 0;
-	if (useRulerOrigin) {
+	if (settings.useRulerOrigin) {
 		var ref = new ActionReference();
 		ref.putEnumerated(charIDToTypeID("Dcmn"), charIDToTypeID("Ordn"), charIDToTypeID("Trgt"));
 		var desc = executeActionGet(ref);
-		xOffSet = desc.getInteger(stringIDToTypeID("rulerOriginH")) >> 16;
-		yOffSet = desc.getInteger(stringIDToTypeID("rulerOriginV")) >> 16;
+		xOffSet = desc.getInteger(app.stringIDToTypeID("rulerOriginH")) >> 16;
+		yOffSet = desc.getInteger(app.stringIDToTypeID("rulerOriginV")) >> 16;
 	}
 
 	activeDocument.duplicate();
 
 	// Output template image.
-	if (writeTemplate) {
-		if (pngScale != 1) {
+	if (settings.writeTemplate) {
+		if (settings.pngScale != 1) {
 			scaleImage();
 			storeHistory();
 		}
@@ -69,17 +65,17 @@ function run () {
 
 		activeDocument.saveAs(file, new PNGSaveOptions(), true, Extension.LOWERCASE);
 
-		if (pngScale != 1) restoreHistory();
+		if (settings.pngScale != 1) restoreHistory();
 	}
 
-	if (!writeJson && !writePngs) {
+	if (!settings.writeJson && !settings.writePngs) {
 		activeDocument.close(SaveOptions.DONOTSAVECHANGES);
 		return;
 	}
 
 	// Rasterize all layers.
 	try {
-		executeAction(stringIDToTypeID( "rasterizeAll" ), undefined, DialogModes.NO);
+		executeAction(app.stringIDToTypeID( "rasterizeAll" ), undefined, DialogModes.NO);
 	} catch (ignored) {}
 
 	// Collect and hide layers.
@@ -97,7 +93,7 @@ function run () {
 		// Use groups as skin names.
 		var potentialSkinName = trim(layer.parent.name);
 		var layerGroupSkin = potentialSkinName.indexOf("-NOSKIN") == -1;
-		var skinName = (groupsAsSkins && layer.parent.typename == "LayerSet" && layerGroupSkin) ? potentialSkinName : "default";
+		var skinName = (settings.groupsAsSkins && layer.parent.typename == "LayerSet" && layerGroupSkin) ? potentialSkinName : "default";
 
 		var skinLayers = skins[skinName];
 		if (!skinLayers) skins[skinName] = skinLayers = [];
@@ -131,9 +127,16 @@ function run () {
 	}
 	json += '],\n"skins":{\n';
 
+	var skinsCount = 0, totalLayerCount = 0;
+	for (var skinName in skins) {
+		if (skins.hasOwnProperty(skinName)) {
+			skinsCount++;
+			totalLayerCount += skins[skinName].length;
+		}
+	}
+
 	// Output skins.
-	var skinsCount = countAssocArray(skins);
-	var skinIndex = 0;
+	var skinIndex = 0, layerCount = 0;
 	for (var skinName in skins) {
 		if (!skins.hasOwnProperty(skinName)) continue;
 		json += '\t"' + skinName + '":{\n';
@@ -143,6 +146,13 @@ function run () {
 		var skinLayerIndex = 0;
 		for (var i = skinLayersCount - 1; i >= 0; i--) {
 			var layer = skinLayers[i];
+
+			if (cancel) {
+				activeDocument.close(SaveOptions.DONOTSAVECHANGES);
+				return;
+			}
+			setProgress(++layerCount / totalLayerCount, trim(layer.name));
+
 			var slotName = layerName(layer);
 			var placeholderName, attachmentName;
 			if (skinName == "default") {
@@ -153,21 +163,21 @@ function run () {
 				attachmentName = skinName + "/" + slotName;
 			}
 
-			var x = activeDocument.width.as("px") * pngScale;
-			var y = activeDocument.height.as("px") * pngScale;
+			var x = activeDocument.width.as("px") * settings.pngScale;
+			var y = activeDocument.height.as("px") * settings.pngScale;
 
 			layer.visible = true;
 			if (!layer.isBackgroundLayer) activeDocument.trim(TrimType.TRANSPARENT, false, true, true, false);
-			x -= activeDocument.width.as("px") * pngScale;
-			y -= activeDocument.height.as("px") * pngScale;
+			x -= activeDocument.width.as("px") * settings.pngScale;
+			y -= activeDocument.height.as("px") * settings.pngScale;
 			if (!layer.isBackgroundLayer) activeDocument.trim(TrimType.TRANSPARENT, true, false, false, true);
-			var width = activeDocument.width.as("px") * pngScale + padding * 2;
-			var height = activeDocument.height.as("px") * pngScale + padding * 2;
+			var width = activeDocument.width.as("px") * settings.pngScale + settings.padding * 2;
+			var height = activeDocument.height.as("px") * settings.pngScale + settings.padding * 2;
 
 			// Save image.
-			if (writePngs) {
-				if (pngScale != 1) scaleImage();
-				if (padding > 0) activeDocument.resizeCanvas(width, height, AnchorPosition.MIDDLECENTER);
+			if (settings.writePngs) {
+				if (settings.pngScale != 1) scaleImage();
+				if (settings.padding > 0) activeDocument.resizeCanvas(width, height, AnchorPosition.MIDDLECENTER);
 
 				if (skinName != "default") new Folder(absImagesDir + skinName).create();
 				activeDocument.saveAs(new File(absImagesDir + attachmentName), new PNGSaveOptions(), true, Extension.LOWERCASE);
@@ -180,9 +190,9 @@ function run () {
 			y += Math.round(height) / 2;
 
 			// Make relative to the Photoshop document ruler origin.
-			if (useRulerOrigin) {
-				x -= xOffSet * pngScale;
-				y -= activeDocument.height.as("px") * pngScale - yOffSet * pngScale; // Invert y.
+			if (settings.useRulerOrigin) {
+				x -= xOffSet * settings.pngScale;
+				y -= activeDocument.height.as("px") * settings.pngScale - yOffSet * settings.pngScale; // Invert y.
 			}
 
 			if (attachmentName == placeholderName) {
@@ -206,7 +216,7 @@ function run () {
 	activeDocument.close(SaveOptions.DONOTSAVECHANGES);
 
 	// Output JSON file.
-	if (writeJson) {
+	if (settings.writeJson) {
 		var name = decodeURI(originalDoc.name);
 		name = name.substring(0, name.indexOf("."));
 		var file = new File(absProjectDir + name + ".json");
@@ -219,19 +229,19 @@ function run () {
 	}
 }
 
-// Dialog and settings:
+// Settings dialog and settings:
 
-function showDialog () {
+function showSettingsDialog () {
 	if (!originalDoc) {
-		alert("Please open a document before running the LayersToPNG script.");
+		alert("Please open a document before running the PhotoshopToSpine script.");
 		return;
 	}
 	if (!hasFilePath()) {
-		alert("Please save the document before running the LayersToPNG script.");
+		alert("Please save the document before running the PhotoshopToSpine script.");
 		return;
 	}
 
-	var dialog = new Window("dialog", "Spine LayersToPNG");
+	var dialog = new Window("dialog", "PhotoshopToSpine - Settings");
 	dialog.alignChildren = "fill";
 
 	var checkboxGroup = dialog.add("group");
@@ -239,20 +249,20 @@ function showDialog () {
 			group.orientation = "column";
 			group.alignChildren = "left";
 			var writePngsCheckbox = group.add("checkbox", undefined, " Write layers as PNGs");
-			writePngsCheckbox.value = writePngs;
+			writePngsCheckbox.value = settings.writePngs;
 			var writeTemplateCheckbox = group.add("checkbox", undefined, " Write a template PNG");
-			writeTemplateCheckbox.value = writeTemplate;
+			writeTemplateCheckbox.value = settings.writeTemplate;
 			var writeJsonCheckbox = group.add("checkbox", undefined, " Write Spine JSON");
-			writeJsonCheckbox.value = writeJson;
+			writeJsonCheckbox.value = settings.writeJson;
 		group = checkboxGroup.add("group");
 			group.orientation = "column";
 			group.alignChildren = "left";
 			var ignoreHiddenLayersCheckbox = group.add("checkbox", undefined, " Ignore hidden layers");
-			ignoreHiddenLayersCheckbox.value = ignoreHiddenLayers;
+			ignoreHiddenLayersCheckbox.value = settings.ignoreHiddenLayers;
 			var groupsAsSkinsCheckbox = group.add("checkbox", undefined, " Use groups as skins");
-			groupsAsSkinsCheckbox.value = groupsAsSkins;
+			groupsAsSkinsCheckbox.value = settings.groupsAsSkins;
 			var useRulerOriginCheckbox = group.add("checkbox", undefined, " Use ruler origin as 0,0");
-			useRulerOriginCheckbox.value = useRulerOrigin;
+			useRulerOriginCheckbox.value = settings.useRulerOrigin;
 
 	var slidersGroup = dialog.add("group");
 		group = slidersGroup.add("group");
@@ -262,9 +272,9 @@ function showDialog () {
 			group.add("statictext", undefined, "Padding:");
 		group = slidersGroup.add("group");
 			group.orientation = "column";
-			var scaleText = group.add("edittext", undefined, pngScale * 100);
+			var scaleText = group.add("edittext", undefined, settings.pngScale * 100);
 			scaleText.characters = 4;
-			var paddingText = group.add("edittext", undefined, padding);
+			var paddingText = group.add("edittext", undefined, settings.padding);
 			paddingText.characters = 4;
 		group = slidersGroup.add("group");
 			group.orientation = "column";
@@ -274,8 +284,8 @@ function showDialog () {
 			group.alignment = ["fill", ""];
 			group.orientation = "column";
 			group.alignChildren = ["fill", ""];
-			var scaleSlider = group.add("slider", undefined, pngScale * 100, 1, 100);
-			var paddingSlider = group.add("slider", undefined, padding, 0, 4);
+			var scaleSlider = group.add("slider", undefined, settings.pngScale * 100, 1, 100);
+			var paddingSlider = group.add("slider", undefined, settings.padding, 0, 4);
 	scaleText.onChanging = function () { scaleSlider.value = scaleText.text; };
 	scaleSlider.onChanging = function () { scaleText.text = Math.round(scaleSlider.value); };
 	paddingText.onChanging = function () { paddingSlider.value = paddingText.text; };
@@ -294,8 +304,8 @@ function showDialog () {
 				group.orientation = "column";
 				group.alignChildren = "fill";
 				group.alignment = ["fill", ""];
-				var imagesDirText = group.add("edittext", undefined, imagesDir);
-				var projectDirText = group.add("edittext", undefined, projectDir);
+				var imagesDirText = group.add("edittext", undefined, settings.imagesDir);
+				var projectDirText = group.add("edittext", undefined, settings.projectDir);
 		outputGroup.add("statictext", undefined, "Begin paths with \"./\" to be relative to the PSD file.").alignment = "center";
 
 	var group = dialog.add("group");
@@ -303,30 +313,31 @@ function showDialog () {
 		var runButton = group.add("button", undefined, "OK");
 		var cancelButton = group.add("button", undefined, "Cancel");
 		cancelButton.onClick = function () {
+			cancel = true;
 			dialog.close(0);
 			return;
 		};
 
 	function updateSettings () {
-		writePngs = writePngsCheckbox.value;
-		writeTemplate = writeTemplateCheckbox.value;
-		writeJson = writeJsonCheckbox.value;
-		ignoreHiddenLayers = ignoreHiddenLayersCheckbox.value;
+		settings.writePngs = writePngsCheckbox.value;
+		settings.writeTemplate = writeTemplateCheckbox.value;
+		settings.writeJson = writeJsonCheckbox.value;
+		settings.ignoreHiddenLayers = ignoreHiddenLayersCheckbox.value;
 		var scaleValue = parseFloat(scaleText.text);
-		if (scaleValue > 0 && scaleValue <= 100) pngScale = scaleValue / 100;
-		groupsAsSkins = groupsAsSkinsCheckbox.value;
-		useRulerOrigin = useRulerOriginCheckbox.value;
-		imagesDir = imagesDirText.text;
-		projectDir = projectDirText.text;
+		if (scaleValue > 0 && scaleValue <= 100) settings.pngScale = scaleValue / 100;
+		settings.groupsAsSkins = groupsAsSkinsCheckbox.value;
+		settings.useRulerOrigin = useRulerOriginCheckbox.value;
+		settings.imagesDir = imagesDirText.text;
+		settings.projectDir = projectDirText.text;
 		var paddingValue = parseInt(paddingText.text);
-		if (paddingValue >= 0) padding = paddingValue;
+		if (paddingValue >= 0) settings.padding = paddingValue;
 	}
 
 	dialog.onClose = function() {
 		updateSettings();
 		saveSettings();
 	};
-	
+
 	runButton.onClick = function () {
 		if (scaleText.text <= 0 || scaleText.text > 100) {
 			alert("PNG scale must be between > 0 and <= 100.");
@@ -336,19 +347,30 @@ function showDialog () {
 			alert("Padding must be >= 0.");
 			return;
 		}
-		dialog.close(0);
+		runButton.enabled = false;
+		writePngsCheckbox.enabled = false;
+		writeTemplateCheckbox.enabled = false;
+		writeJsonCheckbox.enabled = false;
+		ignoreHiddenLayersCheckbox.enabled = false;
+		scaleText.enabled = false;
+		groupsAsSkinsCheckbox.enabled = false;
+		useRulerOriginCheckbox.enabled = false;
+		imagesDirText.enabled = false;
+		projectDirText.enabled = false;
+		paddingText.enabled = false;
 
 		var rulerUnits = app.preferences.rulerUnits;
 		app.preferences.rulerUnits = Units.PIXELS;
 		try {
 			run();
 		} catch (e) {
-			alert("An unexpected error has occurred.\n\nTo debug, run the LayersToPNG script using Adobe ExtendScript "
+			alert("An unexpected error has occurred.\n\nTo debug, run the PhotoshopToSpine script using Adobe ExtendScript "
 				+ "with \"Debug > Do not break on guarded exceptions\" unchecked.");
 			debugger;
 		} finally {
 			if (activeDocument != originalDoc) activeDocument.close(SaveOptions.DONOTSAVECHANGES);
 			app.preferences.rulerUnits = rulerUnits;
+			dialog.close(0);
 		}
 	};
 
@@ -357,45 +379,85 @@ function showDialog () {
 }
 
 function loadSettings () {
+	var options = null;
 	try {
-		settings = app.getCustomOptions(settingsID);
+		options = app.getCustomOptions(app.stringIDToTypeID("settings"));
 	} catch (e) {
-		saveSettings();
 	}
-	if (typeof settings == "undefined") saveSettings();
-	settings = app.getCustomOptions(settingsID);
-	if (settings.hasKey(writePngsID)) writePngs = settings.getBoolean(writePngsID);
-	if (settings.hasKey(writeTemplateID)) writeTemplate = settings.getBoolean(writeTemplateID);
-	if (settings.hasKey(writeJsonID)) writeJson = settings.getBoolean(writeJsonID);
-	if (settings.hasKey(ignoreHiddenLayersID)) ignoreHiddenLayers = settings.getBoolean(ignoreHiddenLayersID);
-	if (settings.hasKey(pngScaleID)) pngScale = settings.getDouble(pngScaleID);
-	if (settings.hasKey(groupsAsSkinsID)) groupsAsSkins = settings.getBoolean(groupsAsSkinsID);
-	if (settings.hasKey(useRulerOriginID)) useRulerOrigin = settings.getBoolean(useRulerOriginID);
-	if (settings.hasKey(imagesDirID)) imagesDir = settings.getString(imagesDirID);
-	if (settings.hasKey(projectDirID)) projectDir = settings.getString(projectDirID);
-	if (settings.hasKey(paddingID)) padding = settings.getDouble(paddingID);
+
+	var settings = {};
+	for (var key in defaultSettings) {
+		if (!defaultSettings.hasOwnProperty(key)) continue;
+		var typeID = app.stringIDToTypeID(key);
+		if (options && options.hasKey(typeID))
+			settings[key] = options["get" + getOptionType(defaultSettings[key])](typeID);
+		else
+			settings[key] = defaultSettings[key];
+	}
+	return settings;
 }
 
 function saveSettings () {
-	var settings = new ActionDescriptor();
-	settings.putBoolean(writePngsID, writePngs);
-	settings.putBoolean(writeTemplateID, writeTemplate);
-	settings.putBoolean(writeJsonID, writeJson);
-	settings.putBoolean(ignoreHiddenLayersID, ignoreHiddenLayers);
-	settings.putDouble(pngScaleID, pngScale);
-	settings.putBoolean(groupsAsSkinsID, groupsAsSkins);
-	settings.putBoolean(useRulerOriginID, useRulerOrigin);
-	settings.putString(imagesDirID, imagesDir);
-	settings.putString(projectDirID, projectDir);
-	settings.putDouble(paddingID, padding);
-	app.putCustomOptions(settingsID, settings, true);
+	var action = new ActionDescriptor();
+	for (var key in defaultSettings) {
+		if (!defaultSettings.hasOwnProperty(key)) continue;
+		action["put" + getOptionType(defaultSettings[key])](app.stringIDToTypeID(key), settings[key]);
+	}
+	app.putCustomOptions(app.stringIDToTypeID("settings"), action, true);
+}
+
+function getOptionType (value) {
+	switch (typeof(value)) {
+	case "boolean": return "Boolean";
+	case "string": return "String";
+	case "number": return "Double";
+	};
+	throw new Error("Invalid default setting: " + value);
+}
+
+// Progress dialog:
+
+function showProgressDialog () {
+	var dialog = new Window("palette", "PhotoshopToSpine - Processing...");
+	dialog.alignChildren = "fill";
+	dialog.preferredSize = [350, 60];
+	dialog.orientation = "column";
+
+	var message = dialog.add("statictext", undefined, "Initializing...");
+
+	var bar = dialog.add("progressbar");
+	bar.preferredSize = [300, 16];
+	bar.maxvalue = 10000;
+
+	dialog.center();
+	dialog.show();
+
+	progress = {
+		dialog: dialog,
+		bar: bar,
+		message: message
+	};
+}
+
+function setProgress (percent, layerName) {
+	progress.message.text = "Layer: " + layerName;
+	progress.bar.value = 10000 * percent;
+
+	if (version >= 11) {
+		// app.refresh(); // Slow.
+		progress.dialog.update();
+	} else { // CS3 and below.
+		var action = new ActionDescriptor();
+		action.putEnumerated(app.stringIDToTypeID("state"), app.stringIDToTypeID("state"), app.stringIDToTypeID("redrawComplete"));
+		app.executeAction(app.stringIDToTypeID("wait"), action, DialogModes.NO);
+	}
 }
 
 // Photoshop utility:
 
 function scaleImage () {
 	var imageSize = activeDocument.width.as("px");
-	activeDocument.resizeImage(UnitValue(imageSize * pngScale, "px"), null, null, ResampleMethod.BICUBICSHARPER);
+	activeDocument.resizeImage(UnitValue(imageSize * settings.pngScale, "px"), null, null, ResampleMethod.BICUBICSHARPER);
 }
 
 var historyIndex;
@@ -409,7 +471,7 @@ function restoreHistory () {
 function collectLayers (layer, collect) {
 	for (var i = 0, n = layer.layers.length; i < n; i++) {
 		var child = layer.layers[i];
-		if (ignoreHiddenLayers && !child.visible) continue;
+		if (settings.ignoreHiddenLayers && !child.visible) continue;
 		if (child.bounds[2] == 0 && child.bounds[3] == 0) continue;
 		if (child.layers && child.layers.length > 0)
 			collectLayers(child, collect);
@@ -423,14 +485,14 @@ function collectLayers (layer, collect) {
 function hasFilePath () {
 	var ref = new ActionReference();
 	ref.putEnumerated(charIDToTypeID("Dcmn"), charIDToTypeID("Ordn"), charIDToTypeID("Trgt"));
-	return executeActionGet(ref).hasKey(stringIDToTypeID("fileReference"));
+	return executeActionGet(ref).hasKey(app.stringIDToTypeID("fileReference"));
 }
 
 function absolutePath (path) {
 	path = trim(path);
 	if (path.length == 0)
 		path = activeDocument.path.toString();
-	else if (imagesDir.indexOf("./") == 0)
+	else if (settings.imagesDir.indexOf("./") == 0)
 		path = activeDocument.path + path.substring(1);
 	path = path.replace(/\\/g, "/");
 	if (path.substring(path.length - 1) != "/") path += "/";
