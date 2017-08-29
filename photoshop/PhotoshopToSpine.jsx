@@ -80,7 +80,7 @@ function run () {
 	var slots = {}, skins = { "default": [] };
 	var slotsCount = 0, skinsCount = 0, totalLayerCount = 0;
 	outer:
-	for (var i = layersCount - 1; i >= 0; i--) {
+	for (var i = 0; i < layersCount; i++) {
 		var layer = layers[i];
 		layer.attachmentName = folders(layer, "") + stripTags(layer.name);
 		layer.slotName = hasTag(layer, "slot", layer.attachmentName);
