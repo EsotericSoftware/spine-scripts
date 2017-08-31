@@ -105,8 +105,14 @@ function run () {
 
 		var skinLayers = skinSlots[layer.slotName];
 		if (!skinLayers) skinSlots[layer.slotName] = skinLayers = [];
-		for (var ii = 0, nn = skinLayers.length; ii < nn; ii++)
-			if (skinLayers[ii].attachmentName == layer.attachmentName) continue outer;
+		for (var ii = 0, nn = skinLayers.length; ii < nn; ii++) {
+			if (skinLayers[ii].attachmentName == layer.attachmentName) {
+				alert("Multiple layers for the \"" + skinName + "\" skin have the same name:\n\n"
+					+ layer.attachmentName
+					+ "\n\nRename or use the [ignore] tag for the other layers.");
+				return;
+			}
+		}
 		skinLayers[skinLayers.length] = layer;
 		totalLayerCount++;
 	}
@@ -246,18 +252,18 @@ function showSettingsDialog () {
 
 	var settingsGroup = dialog.add("panel", undefined, "Settings");
 		settingsGroup.margins = [10,15,10,10];
+		settingsGroup.alignChildren = ["fill", ""];
 		var checkboxGroup = settingsGroup.add("group");
+			checkboxGroup.alignChildren = ["left", "top"];
 			group = checkboxGroup.add("group");
 				group.orientation = "column";
 				group.alignChildren = ["left", ""];
-				group.alignment = ["", "top"];
 				var ignoreHiddenLayersCheckbox = group.add("checkbox", undefined, " Ignore hidden layers");
 				ignoreHiddenLayersCheckbox.value = settings.ignoreHiddenLayers;
 			group = checkboxGroup.add("group");
 				group.orientation = "column";
 				group.alignChildren = ["left", ""];
-				group.alignment = ["", "top"];
-				var writeTemplateCheckbox = group.add("checkbox", undefined, " Write template PNG");
+				var writeTemplateCheckbox = group.add("checkbox", undefined, " Write template image");
 				writeTemplateCheckbox.value = settings.writeTemplate;
 		checkboxGroup = settingsGroup.add("group");
 			checkboxGroup.alignment = ["left", ""];
@@ -286,6 +292,7 @@ function showSettingsDialog () {
 			group = slidersGroup.add("group");
 				group.orientation = "column";
 				group.alignChildren = ["fill", ""];
+				group.alignment = ["fill", ""];
 				var scaleSlider = group.add("slider", undefined, settings.scale * 100, 1, 100);
 				var paddingSlider = group.add("slider", undefined, settings.padding, 0, 4);
 
@@ -293,21 +300,22 @@ function showSettingsDialog () {
 		outputPathGroup.alignChildren = ["fill", ""];
 		outputPathGroup.margins = [10,15,10,10];
 		var textGroup = outputPathGroup.add("group");
+			textGroup.orientation = "column";
+			textGroup.alignChildren = ["fill", ""];
 			group = textGroup.add("group");
-				group.orientation = "column";
-				group.alignChildren = ["right", ""];
 				group.add("statictext", undefined, "Images:");
-				group.add("statictext", undefined, "");
-				group.add("statictext", undefined, "JSON:");
-				group.add("statictext", undefined, "");
-			group = textGroup.add("group");
-				group.orientation = "column";
-				group.alignChildren = ["fill", ""];
-				group.alignment = ["fill", ""]
 				var imagesDirText = group.add("edittext", undefined, settings.imagesDir);
-				var imagesDirPreview = group.add("statictext", undefined, "");
+				imagesDirText.alignment = ["fill", ""];
+			var imagesDirPreview = textGroup.add("statictext", undefined, "");
+			imagesDirPreview.maximumSize.width = 260;
+			group = textGroup.add("group");
+				var jsonLabel = group.add("statictext", undefined, "JSON:");
+				jsonLabel.justify = "right";
+				jsonLabel.minimumSize.width = 41;
 				var jsonPathText = group.add("edittext", undefined, settings.jsonPath);
-				var jsonPathPreview = group.add("statictext", undefined, "");
+				jsonPathText.alignment = ["fill", ""];
+			var jsonPathPreview = textGroup.add("statictext", undefined, "");
+			jsonPathPreview.maximumSize.width = 260;
 
 	var buttonGroup = dialog.add("group");
 		buttonGroup.alignment = ["fill", ""];
@@ -386,6 +394,7 @@ function showSettingsDialog () {
 		paddingSlider.enabled = false;
 		imagesDirText.enabled = false;
 		jsonPathText.enabled = false;
+		helpButton.enabled = false;
 		runButton.enabled = false;
 		cancelButton.enabled = false;
 
@@ -455,10 +464,6 @@ function showHelpDialog () {
 	dialog.orientation = "column";
 	dialog.alignment = ["", "top"];
 
-	try {
-		dialog.add("image", undefined, new File(scriptDir() + "logo.png"));
-	} catch (ignored) {}
-
 	var helpText = dialog.add("statictext", undefined, ""
 		+ "This script writes layers as images and creates a JSON file to bring the images into Spine in the same positions and draw order as they had in Photoshop.\n"
 		+ "\n"
@@ -468,14 +473,15 @@ function showHelpDialog () {
 		+ "\n"
 		+ "Group names:\n"
 		+ "•  [slot]  Layers in the group are placed in a slot, named after the group.\n"
-		+ "•  [skin]  Layers in the group are placed in a skin, named after the group. Skin images are placed in a subfolder for the skin.\n"
+		+ "•  [skin]  Layers in the group are placed in a skin, named after the group. Skin images are output in a subfolder for the skin.\n"
 		+ "•  [merge]  Layers in the group are merged and a single image is output, named after the group.\n"
-		+ "•  [folder]  Layers in the group will be placed in a subfolder. Folder groups can be nested.\n"
+		+ "•  [folder]  Layers in the group will be output in a subfolder. Folder groups can be nested.\n"
 		+ "•  [ignore]  Layers in the group and any child groups will not be output.\n"
 		+ "\n"
 		+ "Layer names:\n"
 		+ "•  [ignore]  The layer will not be output."
-		, {multiline: true});
+	, {multiline: true});
+	helpText.preferredSize.width = 325;
 
 	var closeButton = dialog.add("button", undefined, "Close");
 	closeButton.alignment = ["center", ""];
