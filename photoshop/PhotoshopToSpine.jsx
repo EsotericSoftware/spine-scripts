@@ -5,6 +5,14 @@ app.bringToFront();
 // writes a JSON file which can be imported into Spine where the images
 // will be displayed in the same positions and draw order.
 
+// Copyright (c) 2012-2017, Esoteric Software
+// All rights reserved.
+// Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
+//     * Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
+//     * Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
+//     * Neither the name of Esoteric Software nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
 var version = parseInt(app.version);
 
 var originalDoc;
@@ -39,10 +47,10 @@ function run () {
 
 	// Get ruler origin.
 	var action = new ActionReference();
-	action.putEnumerated(charIDToTypeID("Dcmn"), charIDToTypeID("Ordn"), charIDToTypeID("Trgt"));
+	action.putEnumerated(cID("Dcmn"), cID("Ordn"), cID("Trgt"));
 	var result = executeActionGet(action);
-	var xOffSet = result.getInteger(stringIDToTypeID("rulerOriginH")) >> 16;
-	var yOffSet = result.getInteger(stringIDToTypeID("rulerOriginV")) >> 16;
+	var xOffSet = result.getInteger(sID("rulerOriginH")) >> 16;
+	var yOffSet = result.getInteger(sID("rulerOriginV")) >> 16;
 
 	activeDocument.duplicate();
 
@@ -68,7 +76,7 @@ function run () {
 
 	// Rasterize all layers.
 	try {
-		executeAction(stringIDToTypeID( "rasterizeAll" ), undefined, DialogModes.NO);
+		executeAction(sID( "rasterizeAll" ), undefined, DialogModes.NO);
 	} catch (ignored) {}
 
 	// Collect and hide layers.
@@ -150,6 +158,7 @@ function run () {
 
 				if (isGroup(layer)) {
 					activeDocument.activeLayer = layer;
+					setLayersVisible(layer);
 					layer = layer.merge();
 				}
 
@@ -174,17 +183,15 @@ function run () {
 					activeDocument.saveAs(file, new PNGSaveOptions(), true, Extension.LOWERCASE);
 				}
 
-				if (layerCount < totalLayerCount) {
-					restoreHistory();
-					layer.remove();
-				}
+				restoreHistory();
+				if (layerCount < totalLayerCount) layer.remove();
 
 				x += Math.round(width) / 2;
 				y += Math.round(height) / 2;
 
 				// Make relative to the Photoshop document ruler origin.
 				x -= xOffSet * settings.scale;
-				y -= (activeDocument.height.as("px") - yOffSet) * settings.scale; // Invert y.
+				y -= (activeDocument.height.as("px") - yOffSet) * settings.scale;
 
 				json += "\t\t\t" + quote(placeholderName) + ':{';
 				if (attachmentName != placeholderName) json += '"name":' + quote(attachmentName) + ', ';
@@ -229,23 +236,26 @@ function showSettingsDialog () {
 		return;
 	}
 
-	var dialog = new Window("dialog", "PhotoshopToSpine");
-	dialog.alignChildren = "fill";
+	// Layout.
+	var dialog = new Window("dialog", "PhotoshopToSpine"), group;
+	dialog.alignChildren = ["fill", ""];
 
-	var group;
+	try {
+		dialog.add("image", undefined, new File(scriptDir() + "logo.png"));
+	} catch (ignored) {}
 
 	var settingsGroup = dialog.add("panel", undefined, "Settings");
 		settingsGroup.margins = [10,15,10,10];
 		var checkboxGroup = settingsGroup.add("group");
 			group = checkboxGroup.add("group");
 				group.orientation = "column";
-				group.alignChildren = "left";
+				group.alignChildren = ["left", ""];
 				group.alignment = ["", "top"];
 				var ignoreHiddenLayersCheckbox = group.add("checkbox", undefined, " Ignore hidden layers");
 				ignoreHiddenLayersCheckbox.value = settings.ignoreHiddenLayers;
 			group = checkboxGroup.add("group");
 				group.orientation = "column";
-				group.alignChildren = "left";
+				group.alignChildren = ["left", ""];
 				group.alignment = ["", "top"];
 				var writeTemplateCheckbox = group.add("checkbox", undefined, " Write template PNG");
 				writeTemplateCheckbox.value = settings.writeTemplate;
@@ -253,14 +263,14 @@ function showSettingsDialog () {
 			checkboxGroup.alignment = ["left", ""];
 			group = checkboxGroup.add("group");
 				group.orientation = "column";
-				group.alignChildren = "left";
+				group.alignChildren = ["left", ""];
 				group.alignment = ["", "top"];
 				var ignoreBackgroundCheckbox = group.add("checkbox", undefined, " Ignore background layer");
 				ignoreBackgroundCheckbox.value = settings.ignoreBackground;
 		var slidersGroup = settingsGroup.add("group");
 			group = slidersGroup.add("group");
 				group.orientation = "column";
-				group.alignChildren = "right";
+				group.alignChildren = ["right", ""];
 				group.add("statictext", undefined, "Scale:");
 				group.add("statictext", undefined, "Padding:");
 			group = slidersGroup.add("group");
@@ -274,61 +284,70 @@ function showSettingsDialog () {
 				group.add("statictext", undefined, "%");
 				group.add("statictext", undefined, "px");
 			group = slidersGroup.add("group");
-				group.alignment = ["fill", ""];
 				group.orientation = "column";
 				group.alignChildren = ["fill", ""];
 				var scaleSlider = group.add("slider", undefined, settings.scale * 100, 1, 100);
 				var paddingSlider = group.add("slider", undefined, settings.padding, 0, 4);
-	scaleText.onChanging = function () { scaleSlider.value = scaleText.text; };
-	scaleSlider.onChanging = function () { scaleText.text = Math.round(scaleSlider.value); };
-	paddingText.onChanging = function () { paddingSlider.value = paddingText.text; };
-	paddingSlider.onChanging = function () { paddingText.text = Math.round(paddingSlider.value); };
 
 	var outputPathGroup = dialog.add("panel", undefined, "Output Paths");
-		outputPathGroup.alignChildren = "fill";
+		outputPathGroup.alignChildren = ["fill", ""];
 		outputPathGroup.margins = [10,15,10,10];
 		var textGroup = outputPathGroup.add("group");
 			group = textGroup.add("group");
 				group.orientation = "column";
-				group.alignChildren = "right";
+				group.alignChildren = ["right", ""];
 				group.add("statictext", undefined, "Images:");
 				group.add("statictext", undefined, "");
 				group.add("statictext", undefined, "JSON:");
 				group.add("statictext", undefined, "");
 			group = textGroup.add("group");
 				group.orientation = "column";
-				group.alignChildren = "fill";
-				group.alignment = ["fill", ""];
+				group.alignChildren = ["fill", ""];
+				group.alignment = ["fill", ""]
 				var imagesDirText = group.add("edittext", undefined, settings.imagesDir);
 				var imagesDirPreview = group.add("statictext", undefined, "");
 				var jsonPathText = group.add("edittext", undefined, settings.jsonPath);
 				var jsonPathPreview = group.add("statictext", undefined, "");
-	jsonPathText.onChanging = function () {
-		jsonPathPreview.text = jsonPathText.text ? jsonPath(jsonPathText.text) : "<no JSON output>";
-		jsonPathPreview.helpTip = jsonPathPreview.text;
-	};
-	jsonPathText.onChanging();
-	imagesDirText.onChanging = function () {
-		imagesDirPreview.text = imagesDirText.text ? absolutePath(imagesDirText.text) : "<no image output>";
-		imagesDirPreview.helpTip = imagesDirPreview.text;
-	};
-	imagesDirText.onChanging();
 
+	var buttonGroup = dialog.add("group");
+		buttonGroup.alignment = ["fill", ""];
+		var helpButton = buttonGroup.add("button", undefined, "Help");
+		group = buttonGroup.add("group");
+			group.alignment = ["fill", ""];
+			group.alignChildren = ["right", ""];
+			var runButton = group.add("button", undefined, "OK");
+			var cancelButton = group.add("button", undefined, "Cancel");
+
+	// Tooltips.
 	writeTemplateCheckbox.helpTip = "When checked, a PNG is written for the currently visible layers.";
 	scaleSlider.helpTip = "Scales the PNG files. Useful when using higher resolution art in Photoshop than in Spine.";
 	paddingSlider.helpTip = "Blank pixels around the edge of each image. Can avoid aliasing artifacts for opaque pixels along the image edge.";
 	imagesDirText.helpTip = "The folder to write PNGs. Begin with \"./\" to be relative to the PSD file. Blank to disable writing PNGs.";
 	jsonPathText.helpTip = "Output JSON file if ending with \".json\", else the folder to write the JSON file. Begin with \"./\" to be relative to the PSD file. Blank to disable writing a JSON file.";
 
-	var group = dialog.add("group");
-		group.alignment = "center";
-		var runButton = group.add("button", undefined, "OK");
-		var cancelButton = group.add("button", undefined, "Cancel");
-		cancelButton.onClick = function () {
-			cancel = true;
-			dialog.close(0);
-			return;
-		};
+	// Events.
+	scaleText.onChanging = function () { scaleSlider.value = scaleText.text; };
+	scaleSlider.onChanging = function () { scaleText.text = Math.round(scaleSlider.value); };
+	paddingText.onChanging = function () { paddingSlider.value = paddingText.text; };
+	paddingSlider.onChanging = function () { paddingText.text = Math.round(paddingSlider.value); };
+	jsonPathText.onChanging = function () {
+		jsonPathPreview.text = jsonPathText.text ? jsonPath(jsonPathText.text) : "<no JSON output>";
+		jsonPathPreview.helpTip = jsonPathPreview.text;
+	};
+	imagesDirText.onChanging = function () {
+		imagesDirPreview.text = imagesDirText.text ? absolutePath(imagesDirText.text) : "<no image output>";
+		imagesDirPreview.helpTip = imagesDirPreview.text;
+	};
+	cancelButton.onClick = function () {
+		cancel = true;
+		dialog.close();
+		return;
+	};
+	helpButton.onClick = showHelpDialog;
+
+	// Run now.
+	jsonPathText.onChanging();
+	imagesDirText.onChanging();
 
 	function updateSettings () {
 		settings.writeTemplate = writeTemplateCheckbox.value;
@@ -383,7 +402,7 @@ function showSettingsDialog () {
 		} finally {
 			if (activeDocument != originalDoc) activeDocument.close(SaveOptions.DONOTSAVECHANGES);
 			app.preferences.rulerUnits = rulerUnits;
-			dialog.close(0);
+			dialog.close();
 		}
 	};
 
@@ -394,14 +413,14 @@ function showSettingsDialog () {
 function loadSettings () {
 	var options = null;
 	try {
-		options = app.getCustomOptions(stringIDToTypeID("settings"));
+		options = app.getCustomOptions(sID("settings"));
 	} catch (e) {
 	}
 
 	var settings = {};
 	for (var key in defaultSettings) {
 		if (!defaultSettings.hasOwnProperty(key)) continue;
-		var typeID = stringIDToTypeID(key);
+		var typeID = sID(key);
 		if (options && options.hasKey(typeID))
 			settings[key] = options["get" + getOptionType(defaultSettings[key])](typeID);
 		else
@@ -414,9 +433,9 @@ function saveSettings () {
 	var action = new ActionDescriptor();
 	for (var key in defaultSettings) {
 		if (!defaultSettings.hasOwnProperty(key)) continue;
-		action["put" + getOptionType(defaultSettings[key])](stringIDToTypeID(key), settings[key]);
+		action["put" + getOptionType(defaultSettings[key])](sID(key), settings[key]);
 	}
-	app.putCustomOptions(stringIDToTypeID("settings"), action, true);
+	app.putCustomOptions(sID("settings"), action, true);
 }
 
 function getOptionType (value) {
@@ -428,11 +447,52 @@ function getOptionType (value) {
 	throw new Error("Invalid default setting: " + value);
 }
 
+// Help dialog.
+
+function showHelpDialog () {
+	var dialog = new Window("dialog", "PhotoshopToSpine - Help");
+	dialog.alignChildren = "fill";
+	dialog.orientation = "column";
+	dialog.alignment = ["", "top"];
+
+	try {
+		dialog.add("image", undefined, new File(scriptDir() + "logo.png"));
+	} catch (ignored) {}
+
+	var helpText = dialog.add("statictext", undefined, ""
+		+ "This script writes layers as images and creates a JSON file to bring the images into Spine in the same positions and draw order as they had in Photoshop.\n"
+		+ "\n"
+		+ "The ruler origin corresponds to 0,0 in Spine.\n"
+		+ "\n"
+		+ "Tags in square brackets can be used in layer and group names to customize the output.\n"
+		+ "\n"
+		+ "Group names:\n"
+		+ "•  [slot]  Layers in the group are placed in a slot, named after the group.\n"
+		+ "•  [skin]  Layers in the group are placed in a skin, named after the group. Skin images are placed in a subfolder for the skin.\n"
+		+ "•  [merge]  Layers in the group are merged and a single image is output, named after the group.\n"
+		+ "•  [folder]  Layers in the group will be placed in a subfolder. Folder groups can be nested.\n"
+		+ "•  [ignore]  Layers in the group and any child groups will not be output.\n"
+		+ "\n"
+		+ "Layer names:\n"
+		+ "•  [ignore]  The layer will not be output."
+		, {multiline: true});
+
+	var closeButton = dialog.add("button", undefined, "Close");
+	closeButton.alignment = ["center", ""];
+
+	closeButton.onClick = function () {
+		dialog.close();
+	};
+
+	dialog.center();
+	dialog.show();
+}
+
 // Progress dialog:
 
 function showProgressDialog () {
 	var dialog = new Window("palette", "PhotoshopToSpine - Processing...");
-	dialog.alignChildren = "fill";
+	dialog.alignChildren = ["fill", ""];
 	dialog.orientation = "column";
 
 	var message = dialog.add("statictext", undefined, "Initializing...");
@@ -466,23 +526,11 @@ function setProgress (percent, layerName) {
 	progress.dialog.active = true;
 }
 
-// Photoshop utility:
-
-function scaleImage () {
-	var imageSize = activeDocument.width.as("px") * settings.scale;
-	activeDocument.resizeImage(UnitValue(imageSize, "px"), null, null, ResampleMethod.BICUBICSHARPER);
-}
-
-var historyIndex;
-function storeHistory () {
-	historyIndex = activeDocument.historyStates.length - 1;
-}
-function restoreHistory () {
-	activeDocument.activeHistoryState = activeDocument.historyStates[historyIndex];
-}
+// PhotoshopToSpine utility:
 
 function collectLayers (parent, collect) {
 	for (var i = parent.layers.length - 1; i >= 0; i--) {
+		if (cancel) return;
 		var layer = parent.layers[i];
 		if (settings.ignoreHiddenLayers && !layer.visible) {
 			layer.remove();
@@ -502,44 +550,103 @@ function collectLayers (parent, collect) {
 			continue;
 		}
 
-		if (group && hasTag(layer, "merge")) {
-			collect.push(layer);
-			layer.wasVisible = layer.visible;
-			layer.visible = false;
-			if (layer.layers) {
-				for (var ii = layer.layers.length - 1; ii >= 0; ii--) 
-					if (hasTag(layer.layers[ii], "ignore")) layer.layers[ii].remove();
+		// Ensure tags are valid.
+		var re = /\[([^\]]+)\]/g;
+		while (true) {
+			var matches = re.exec(layer.name);
+			if (!matches) break;
+			var tag = matches[1].toLowerCase();
+			if (group) {
+				if (!isValidGroupTag(tag)) {
+					var message = "Invalid group name:\n\n" + layer.name;
+					if (isValidLayerTag(tag))
+						message += "\n\nThe [" + tag + "] tag is only valid for layers, not for groups.";
+					else
+						message += "\n\nThe [" + tag + "] tag is not a valid tag.";
+					alert(message);
+					cancel = true;
+					return;
+				}
+			} else if (!isValidLayerTag(tag)) {
+				var message = "Invalid layer name:\n\n" + layer.name;
+				if (isValidGroupTag(tag))
+					message += "\n\nThe [" + tag + "] tag is only valid for groups, not for layers.";
+				else
+					message += "\n\nThe [" + tag + "] tag is not a valid tag.";
+				alert(message);
+				cancel = true;
+				return;
 			}
-		} else if (layer.layers && layer.layers.length > 0)
-			collectLayers(layer, collect);
-		else if (layer.kind == LayerKind.NORMAL) {
-			collect.push(layer);
-			layer.wasVisible = layer.visible;
-			layer.visible = false;
 		}
+
+		// Ensure only one tag.
+		if (layer.name.replace(/\[[^\]]+\]/, "").search(/\[[^\]]+\]/) != -1) {
+			alert("A " + (group ? "group" : "layer") + " name must not have more than one tag:\n" + layer.name);
+			cancel = true;
+			return;
+		}
+
+		if (group && hasTag(layer, "merge"))
+			collectGroupMerge(layer);
+		else if (layer.layers && layer.layers.length > 0) {
+			layer.visible = true;
+			collectLayers(layer, collect);
+			continue;
+		} else if (layer.kind == LayerKind.NORMAL)
+			process = true;
+		else {
+			layer.remove();
+			continue;
+		}
+
+		collect.push(layer);
+		layer.wasVisible = layer.visible;
+		layer.visible = false;
 	}
 }
 
-function hasFilePath () {
-	var ref = new ActionReference();
-	ref.putEnumerated(charIDToTypeID("Dcmn"), charIDToTypeID("Ordn"), charIDToTypeID("Trgt"));
-	return executeActionGet(ref).hasKey(stringIDToTypeID("fileReference"));
+function collectGroupMerge (parent) {
+	if (!parent.layers) return;
+	for (var i = parent.layers.length - 1; i >= 0; i--) {
+		var layer = parent.layers[i];
+		if (settings.ignoreHiddenLayers && !layer.visible) {
+			layer.remove();
+			continue;
+		}
+		if (hasTag(layer, "ignore")) {
+			layer.remove();
+			continue;
+		}
+		var group = isGroup(layer);
+		if (!group && layer.bounds[2] == 0 && layer.bounds[3] == 0) {
+			layer.remove();
+			continue;
+		}
+
+		layer.visible = false;
+
+		collectGroupMerge(layer);
+	}
 }
 
-function absolutePath (path) {
-	path = trim(path);
-	if (!startsWith(path, "./")) {
-		var absolute = decodeURI(new File(path).absoluteURI);
-		if (!startsWith(absolute, decodeURI(new File("child").parent.absoluteURI))) return absolute + "/";
-		path = "./" + path;
+function isValidGroupTag (tag) {
+	switch (tag) {
+	case "slot":
+	case "skin":
+	case "merge":
+	case "folder":
+	case "ignore":
+		return true;
 	}
-	if (path.length == 0)
-		path = decodeURI(activeDocument.path);
-	else if (startsWith(settings.imagesDir, "./"))
-		path = decodeURI(activeDocument.path) + path.substring(1);
-	path = path.replace(/\\/g, "/");
-	if (path.substring(path.length - 1) != "/") path += "/";
-	return path;
+	return false;
+}
+
+function isValidLayerTag (tag) {
+	switch (tag) {
+	case "ignore":
+		return true;
+	}
+	return false;
 }
 
 function isGroup (layer) {
@@ -553,7 +660,7 @@ function stripTags (name) {
 function hasTagLayer (layer, tag) {
 	while (layer) {
 		if (tag == "ignore" || isGroup(layer)) { // Non-group layers can only have ignore tag.
-			if (layer.name.indexOf("[" + tag + "]") != -1) return layer;
+			if (layer.name.toLowerCase().indexOf("[" + tag + "]") != -1) return layer;
 		}
 		layer = layer.parent;
 	}
@@ -578,6 +685,77 @@ function jsonPath (jsonPath) {
 function folders (layer, path) {
 	var folderLayer = hasTagLayer(layer, "folder");
 	return folderLayer ? folders(folderLayer.parent, stripTags(folderLayer.name) + "/" + path) : path;
+}
+
+// Photoshop utility:
+
+function scaleImage () {
+	var imageSize = activeDocument.width.as("px") * settings.scale;
+	activeDocument.resizeImage(UnitValue(imageSize, "px"), null, null, ResampleMethod.BICUBICSHARPER);
+}
+
+var historyIndex;
+function storeHistory () {
+	historyIndex = activeDocument.historyStates.length - 1;
+}
+function restoreHistory () {
+	activeDocument.activeHistoryState = activeDocument.historyStates[historyIndex];
+}
+
+function scriptDir () {
+	var file;
+	if (version >= 10)
+		file = $.fileName;
+	else {
+		try {
+			var error = THROW_ERROR; // Force error which provides the script file name.
+		} catch (ex) {
+			file = ex.fileName;
+		}
+	}
+	return new File(file).parent + "/";
+}
+
+function setLayersVisible (group) {
+	for (var i = group.layers.length - 1; i >= 0; i--) {
+		var layer = group.layers[i];
+		layer.visible = true;
+		if (layer.layers && layer.layers.length > 0) setLayersVisible(layer);
+	}
+}
+
+function hasFilePath () {
+	var action = new ActionReference();
+	action.putEnumerated(cID("Dcmn"), cID("Ordn"), cID("Trgt"));
+	return executeActionGet(action).hasKey(sID("fileReference"));
+}
+
+function absolutePath (path) {
+	path = trim(path);
+	if (!startsWith(path, "./")) {
+		var absolute = decodeURI(new File(path).absoluteURI);
+		if (!startsWith(absolute, decodeURI(new File("child").parent.absoluteURI))) return absolute + "/";
+		path = "./" + path;
+	}
+	if (path.length == 0)
+		path = decodeURI(activeDocument.path);
+	else if (startsWith(settings.imagesDir, "./"))
+		path = decodeURI(activeDocument.path) + path.substring(1);
+	path = path.replace(/\\/g, "/");
+	if (path.substring(path.length - 1) != "/") path += "/";
+	return path;
+}
+
+function cID (id) {
+	return charIDToTypeID(id);
+}
+
+function sID (id) {
+	return stringIDToTypeID(id);
+}
+
+function bgColor (control, r, g, b) {
+	control.graphics.backgroundColor = control.graphics.newBrush(control.graphics.BrushType.SOLID_COLOR, [r, g, b]);
 }
 
 // JavaScript utility:
