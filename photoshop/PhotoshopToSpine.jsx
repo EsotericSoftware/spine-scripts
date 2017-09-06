@@ -592,9 +592,10 @@ function collectLayers (parent, collect) {
 			return;
 		}
 
-		if (group && hasTag(layer, "merge"))
+		if (group && hasTag(layer, "merge")) {
 			collectGroupMerge(layer);
-		else if (layer.layers && layer.layers.length > 0) {
+			if (!layer.layers || layer.layers.length == 0) continue;
+		} else if (layer.layers && layer.layers.length > 0) {
 			layer.visible = true;
 			collectLayers(layer, collect);
 			continue;
