@@ -53,6 +53,7 @@ function run () {
 	var yOffSet = result.getInteger(sID("rulerOriginV")) >> 16;
 
 	activeDocument.duplicate();
+	app.runMenuItem(sID("selectNoLayers"));
 
 	// Output template image.
 	if (settings.writeTemplate) {
@@ -591,7 +592,10 @@ function collectLayers (parent, collect) {
 			return;
 		}
 
+		layer.wasVisible = layer.visible;
+
 		if (group && hasTag(layer, "merge")) {
+			layer.visible = true;
 			collectGroupMerge(layer);
 			if (!layer.layers || layer.layers.length == 0) continue;
 		} else if (layer.layers && layer.layers.length > 0) {
@@ -605,9 +609,8 @@ function collectLayers (parent, collect) {
 			continue;
 		}
 
-		collect.push(layer);
-		layer.wasVisible = layer.visible;
 		layer.visible = false;
+		collect.push(layer);
 	}
 }
 
@@ -620,11 +623,6 @@ function collectGroupMerge (parent) {
 			continue;
 		}
 		if (hasTag(layer, "ignore")) {
-			layer.remove();
-			continue;
-		}
-		var group = isGroup(layer);
-		if (!group && layer.bounds[2] == 0 && layer.bounds[3] == 0) {
 			layer.remove();
 			continue;
 		}
