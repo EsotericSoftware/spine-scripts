@@ -629,9 +629,8 @@ function collectGroupMerge (parent) {
 			continue;
 		}
 
-		layer.visible = false;
-
 		collectGroupMerge(layer);
+		layer.visible = false;
 	}
 }
 
