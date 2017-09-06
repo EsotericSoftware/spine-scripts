@@ -164,7 +164,6 @@ function run () {
 
 				if (isGroup(layer)) {
 					activeDocument.activeLayer = layer;
-					setLayersVisible(layer);
 					layer = layer.merge();
 				}
 
@@ -631,7 +630,6 @@ function collectGroupMerge (parent) {
 		}
 
 		collectGroupMerge(layer);
-		layer.visible = false;
 	}
 }
 
@@ -720,14 +718,6 @@ function scriptDir () {
 		}
 	}
 	return new File(file).parent + "/";
-}
-
-function setLayersVisible (group) {
-	for (var i = group.layers.length - 1; i >= 0; i--) {
-		var layer = group.layers[i];
-		layer.visible = true;
-		if (layer.layers && layer.layers.length > 0) setLayersVisible(layer);
-	}
 }
 
 function hasFilePath () {
