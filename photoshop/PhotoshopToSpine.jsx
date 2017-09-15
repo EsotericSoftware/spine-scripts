@@ -53,7 +53,7 @@ function run () {
 	var yOffSet = result.getInteger(sID("rulerOriginV")) >> 16;
 
 	activeDocument.duplicate();
-	app.runMenuItem(sID("selectNoLayers"));
+	deselectLayers();
 
 	// Output template image.
 	if (settings.writeTemplate) {
@@ -163,10 +163,8 @@ function run () {
 				var placeholderName = layer.attachmentName;
 				var attachmentName = (skinName == "default" ? "" : skinName + "/") + placeholderName;
 
-				if (isGroup(layer)) {
-					activeDocument.activeLayer = layer;
-					layer = layer.merge();
-				}
+				activeDocument.activeLayer = layer;
+				if (isGroup(layer)) layer = layer.merge();
 
 				storeHistory();
 
@@ -750,6 +748,14 @@ function sID (id) {
 
 function bgColor (control, r, g, b) {
 	control.graphics.backgroundColor = control.graphics.newBrush(control.graphics.BrushType.SOLID_COLOR, [r, g, b]);
+}
+
+function deselectLayers () {
+	var desc = new ActionDescriptor();
+	var ref = new ActionReference();
+	ref.putEnumerated(cID('Lyr '), cID('Ordn'), cID('Trgt'));
+	desc.putReference(cID('null'), ref);
+	executeAction(sID('selectNoLayers'), desc, DialogModes.NO);
 }
 
 // JavaScript utility:
