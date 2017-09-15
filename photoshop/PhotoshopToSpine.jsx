@@ -77,13 +77,14 @@ function run () {
 
 	// Rasterize all layers.
 	try {
-		executeAction(sID( "rasterizeAll" ), undefined, DialogModes.NO);
+		executeAction(sID("rasterizeAll"), undefined, DialogModes.NO);
 	} catch (ignored) {}
 
 	// Collect and hide layers.
 	var layers = [];
 	collectLayers(activeDocument, layers);
 	var layersCount = layers.length;
+	activeDocument.artLayers.add(); // Add a history item to prevent restoreHistory from affecting layer visibility.
 
 	// Store the slot names and layers for each skin.
 	var slots = {}, skins = { "default": [] };
@@ -163,8 +164,10 @@ function run () {
 				var placeholderName = layer.attachmentName;
 				var attachmentName = (skinName == "default" ? "" : skinName + "/") + placeholderName;
 
-				activeDocument.activeLayer = layer;
-				if (isGroup(layer)) layer = layer.merge();
+				if (isGroup(layer)) {
+					activeDocument.activeLayer = layer;
+					layer = layer.merge();
+				}
 
 				storeHistory();
 
