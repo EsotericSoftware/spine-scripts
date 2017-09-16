@@ -3,7 +3,10 @@
 Exports layers to images and outputs a Spine JSON file.
 http://esotericsoftware.com/spine-json-format
 
-Run from the GIMP menu option: File -> Export to Spine
+To install, place this file in: *install*/lib/gimp/*version*/plug-ins/
+Where *install* is the GIMP installation folder and *version* is the GIMP version.
+
+To run, in GIMP choose: File -> Export to Spine
 
 Original hosting location:
 https://github.com/clofresh/gimp-spine
