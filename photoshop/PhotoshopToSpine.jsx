@@ -13,7 +13,7 @@ app.bringToFront();
 //     * Neither the name of Esoteric Software nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-var version = parseInt(app.version);
+var cs2 = parseInt(app.version) < 10;
 
 var originalDoc;
 try {
@@ -230,7 +230,7 @@ function run () {
 // Settings dialog:
 
 function showSettingsDialog () {
-	if (version < 9) {
+	if (parseInt(app.version) < 9) {
 		alert("Photoshop CS2 or later is required.");
 		return;
 	}
@@ -245,7 +245,7 @@ function showSettingsDialog () {
 
 	// Layout.
 	var dialog = new Window("dialog", "PhotoshopToSpine"), group;
-	dialog.alignChildren = ["fill", ""];
+	dialog.alignChildren = "fill";
 
 	try {
 		dialog.add("image", undefined, new File(scriptDir() + "logo.png"));
@@ -253,7 +253,7 @@ function showSettingsDialog () {
 
 	var settingsGroup = dialog.add("panel", undefined, "Settings");
 		settingsGroup.margins = [10,15,10,10];
-		settingsGroup.alignChildren = ["fill", ""];
+		settingsGroup.alignChildren = "fill";
 		var checkboxGroup = settingsGroup.add("group");
 			checkboxGroup.alignChildren = ["left", "top"];
 			group = checkboxGroup.add("group");
@@ -274,53 +274,76 @@ function showSettingsDialog () {
 				group.alignment = ["", "top"];
 				var ignoreBackgroundCheckbox = group.add("checkbox", undefined, " Ignore background layer");
 				ignoreBackgroundCheckbox.value = settings.ignoreBackground;
-		var slidersGroup = settingsGroup.add("group");
-			group = slidersGroup.add("group");
-				group.orientation = "column";
-				group.alignChildren = ["right", ""];
+		var scaleText, paddingText, scaleSlider, paddingSlider;
+		if (!cs2) {
+			var slidersGroup = settingsGroup.add("group");
+				group = slidersGroup.add("group");
+					group.orientation = "column";
+					group.alignChildren = ["right", ""];
+					group.add("statictext", undefined, "Scale:");
+					group.add("statictext", undefined, "Padding:");
+				group = slidersGroup.add("group");
+					group.orientation = "column";
+					scaleText = group.add("edittext", undefined, settings.scale * 100);
+					scaleText.characters = 4;
+					paddingText = group.add("edittext", undefined, settings.padding);
+					paddingText.characters = 4;
+				group = slidersGroup.add("group");
+					group.orientation = "column";
+					group.add("statictext", undefined, "%");
+					group.add("statictext", undefined, "px");
+				group = slidersGroup.add("group");
+					group.orientation = "column";
+					group.alignChildren = ["fill", ""];
+					group.alignment = ["fill", ""];
+					scaleSlider = group.add("slider", undefined, settings.scale * 100, 1, 100);
+					paddingSlider = group.add("slider", undefined, settings.padding, 0, 4);
+		} else {
+			group = settingsGroup.add("group");
 				group.add("statictext", undefined, "Scale:");
+				scaleText = group.add("edittext", undefined, settings.scale * 100);
+				scaleText.preferredSize.width = 50;
+			scaleSlider = settingsGroup.add("slider", undefined, settings.scale * 100, 1, 100);
+			group = settingsGroup.add("group");
 				group.add("statictext", undefined, "Padding:");
-			group = slidersGroup.add("group");
-				group.orientation = "column";
-				var scaleText = group.add("edittext", undefined, settings.scale * 100);
-				scaleText.characters = 4;
-				var paddingText = group.add("edittext", undefined, settings.padding);
-				paddingText.characters = 4;
-			group = slidersGroup.add("group");
-				group.orientation = "column";
-				group.add("statictext", undefined, "%");
-				group.add("statictext", undefined, "px");
-			group = slidersGroup.add("group");
-				group.orientation = "column";
-				group.alignChildren = ["fill", ""];
-				group.alignment = ["fill", ""];
-				var scaleSlider = group.add("slider", undefined, settings.scale * 100, 1, 100);
-				var paddingSlider = group.add("slider", undefined, settings.padding, 0, 4);
+				paddingText = group.add("edittext", undefined, settings.padding);
+				paddingText.preferredSize.width = 50;
+			paddingSlider = settingsGroup.add("slider", undefined, settings.padding, 0, 4);
+		}
 
 	var outputPathGroup = dialog.add("panel", undefined, "Output Paths");
 		outputPathGroup.alignChildren = ["fill", ""];
 		outputPathGroup.margins = [10,15,10,10];
-		var textGroup = outputPathGroup.add("group");
+		var imagesDirText, imagesDirPreview, jsonPathText, jsonPathPreview;
+		if (!cs2) {
+			var textGroup = outputPathGroup.add("group");
 			textGroup.orientation = "column";
 			textGroup.alignChildren = ["fill", ""];
 			group = textGroup.add("group");
 				group.add("statictext", undefined, "Images:");
-				var imagesDirText = group.add("edittext", undefined, settings.imagesDir);
+				imagesDirText = group.add("edittext", undefined, settings.imagesDir);
 				imagesDirText.alignment = ["fill", ""];
-			var imagesDirPreview = textGroup.add("statictext", undefined, "");
+			imagesDirPreview = textGroup.add("statictext", undefined, "");
 			imagesDirPreview.maximumSize.width = 260;
 			group = textGroup.add("group");
 				var jsonLabel = group.add("statictext", undefined, "JSON:");
 				jsonLabel.justify = "right";
 				jsonLabel.minimumSize.width = 41;
-				var jsonPathText = group.add("edittext", undefined, settings.jsonPath);
+				jsonPathText = group.add("edittext", undefined, settings.jsonPath);
 				jsonPathText.alignment = ["fill", ""];
-			var jsonPathPreview = textGroup.add("statictext", undefined, "");
+			jsonPathPreview = textGroup.add("statictext", undefined, "");
 			jsonPathPreview.maximumSize.width = 260;
-
+		} else {
+			outputPathGroup.add("statictext", undefined, "Images:");
+			imagesDirText = outputPathGroup.add("edittext", undefined, settings.imagesDir);
+			imagesDirText.alignment = "fill";
+			outputPathGroup.add("statictext", undefined, "JSON:");
+			jsonPathText = outputPathGroup.add("edittext", undefined, settings.jsonPath);
+			jsonPathText.alignment = "fill";
+		}
 	var buttonGroup = dialog.add("group");
-		buttonGroup.alignment = ["fill", ""];
-		var helpButton = buttonGroup.add("button", undefined, "Help");
+		var helpButton;
+		if (!cs2) helpButton = buttonGroup.add("button", undefined, "Help");
 		group = buttonGroup.add("group");
 			group.alignment = ["fill", ""];
 			group.alignChildren = ["right", ""];
@@ -339,20 +362,28 @@ function showSettingsDialog () {
 	scaleSlider.onChanging = function () { scaleText.text = Math.round(scaleSlider.value); };
 	paddingText.onChanging = function () { paddingSlider.value = paddingText.text; };
 	paddingSlider.onChanging = function () { paddingText.text = Math.round(paddingSlider.value); };
-	jsonPathText.onChanging = function () {
-		jsonPathPreview.text = jsonPathText.text ? jsonPath(jsonPathText.text) : "<no JSON output>";
-		jsonPathPreview.helpTip = jsonPathPreview.text;
-	};
-	imagesDirText.onChanging = function () {
-		imagesDirPreview.text = imagesDirText.text ? absolutePath(imagesDirText.text) : "<no image output>";
-		imagesDirPreview.helpTip = imagesDirPreview.text;
-	};
 	cancelButton.onClick = function () {
 		cancel = true;
 		dialog.close();
 		return;
 	};
-	helpButton.onClick = showHelpDialog;
+	if (!cs2) helpButton.onClick = showHelpDialog;
+	jsonPathText.onChanging = function () {
+		var text = jsonPathText.text ? jsonPath(jsonPathText.text) : "<no JSON output>";
+		if (!cs2) {
+			jsonPathPreview.text = text;
+			jsonPathPreview.helpTip = text;
+		} else
+			jsonPathText.helpTip = text;
+	};
+	imagesDirText.onChanging = function () {
+		var text = imagesDirText.text ? absolutePath(imagesDirText.text) : "<no image output>";
+		if (!cs2) {
+			imagesDirPreview.text = text;
+			imagesDirPreview.helpTip = text;
+		} else
+			imagesDirText.helpTip = text;
+	};
 
 	// Run now.
 	jsonPathText.onChanging();
@@ -395,7 +426,7 @@ function showSettingsDialog () {
 		paddingSlider.enabled = false;
 		imagesDirText.enabled = false;
 		jsonPathText.enabled = false;
-		helpButton.enabled = false;
+		if (!cs2) helpButton.enabled = false;
 		runButton.enabled = false;
 		cancelButton.enabled = false;
 
@@ -440,6 +471,7 @@ function loadSettings () {
 }
 
 function saveSettings () {
+	if (cs2) return; // No putCustomOptions.
 	var action = new ActionDescriptor();
 	for (var key in defaultSettings) {
 		if (!defaultSettings.hasOwnProperty(key)) continue;
@@ -461,7 +493,7 @@ function getOptionType (value) {
 
 function showHelpDialog () {
 	var dialog = new Window("dialog", "PhotoshopToSpine - Help");
-	dialog.alignChildren = "fill";
+	dialog.alignChildren = ["fill", ""];
 	dialog.orientation = "column";
 	dialog.alignment = ["", "top"];
 
@@ -499,7 +531,7 @@ function showHelpDialog () {
 
 function showProgressDialog () {
 	var dialog = new Window("palette", "PhotoshopToSpine - Processing...");
-	dialog.alignChildren = ["fill", ""];
+	dialog.alignChildren = "fill";
 	dialog.orientation = "column";
 
 	var message = dialog.add("statictext", undefined, "Initializing...");
@@ -707,7 +739,7 @@ function restoreHistory () {
 
 function scriptDir () {
 	var file;
-	if (version >= 10)
+	if (!cs2)
 		file = $.fileName;
 	else {
 		try {
