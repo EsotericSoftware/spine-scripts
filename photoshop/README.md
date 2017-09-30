@@ -10,7 +10,7 @@ Right click [PhotoshopToSpine.jsx](https://github.com/EsotericSoftware/spine-scr
 
 To see the Spine logo on the dialog, you may optionally right click [logo.png](https://github.com/EsotericSoftware/spine-scripts/raw/master/photoshop/logo.png) and choose `Save As` to save the logo image in the same folder as the script file.
 
-## Basic usage
+## Usage
 
 Run the `PhotoshopToSpine.jsx` script file by choosing `File` > `Scripts` > `Browse` in Photoshop.
 
