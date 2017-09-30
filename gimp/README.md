@@ -6,7 +6,7 @@
 
 ![](http://n4te.com/x/253-xQ56.png)
 
-If you don't have a `Filters` > `Python-Fu` menu, you don't have Python plugin support.
+* If you don't have a `Filters` > `Python-Fu` menu, you don't have Python plugin support.
 
 ![](http://n4te.com/x/259-9Oyk.png)
 * Find your plugin directories by choosing `Edit` > `Preferences` > `Folders` > `Plug-ins`.
