@@ -1,11 +1,18 @@
 # Photoshop to Spine
 
-## Installation
+This script supports the latest version of Photoshop CC and all older versions of Photoshop back to CS2.
 
-* Right click this link and choose Save As: [PhotoshopToSpine.jsx](https://github.com/EsotericSoftware/spine-scripts/raw/master/photoshop/PhotoshopToSpine.jsx)
-* Run the `PhotoshopToSpine.jsx` script file that was saved by choosing `File` > `Scripts` > `Browse` in Photoshop.
+Please note that Adobe has made [CS2 available for download](https://helpx.adobe.com/creative-suite/kb/cs2-product-downloads.html?promoid=19SCDRQK), though they ask that only those who legitimately purchased CS2 use it.
+
+## Download
+
+Right click [PhotoshopToSpine.jsx](https://github.com/EsotericSoftware/spine-scripts/raw/master/photoshop/PhotoshopToSpine.jsx) and choose `Save As` to save the script file.
+
+To see the Spine logo on the dialog, you may optionally right click [logo.png](https://github.com/EsotericSoftware/spine-scripts/raw/master/photoshop/logo.png) and choose `Save As` to save the logo image in the same folder as the script file.
 
 ## Basic usage
+
+Run the `PhotoshopToSpine.jsx` script file by choosing `File` > `Scripts` > `Browse` in Photoshop.
 
 ![](http://n4te.com/x/266-tT4Y.png)
 
