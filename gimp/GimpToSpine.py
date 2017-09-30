@@ -58,7 +58,7 @@ def process_layer(img, layer, slots, attachments):
     else:
         layer_name = layer.name
 
-        slots.append({
+        slots.insert(0, {
             'name': layer_name,
             'bone': 'root',
             'attachment': layer_name,
@@ -132,7 +132,7 @@ gimpfu.register(
     "*",
     # params
     [
-        (gimpfu.PF_ADJUSTMENT, "compression", "PNG Compression level:", 0, (0, 9, 1)),
+        (gimpfu.PF_ADJUSTMENT, "compression", "PNG Compression level:", 9, (0, 9, 1)),
         (gimpfu.PF_DIRNAME, "dir", "Directory", "/tmp")
     ],
     # results
