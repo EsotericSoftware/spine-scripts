@@ -2,6 +2,8 @@
 
 ## ae_to_spine.jsx
 
+To download, right click [ae_to_spine.jsx](https://github.com/EsotericSoftware/spine-scripts/raw/master/aftereffects/ae_to_spine.jsx) and choose `Save As`.
+
 The ae_to_spine.jsx script exports a lot of animation data from After Effects, but not everything. The following are supported:
 
 * Image layers
@@ -34,6 +36,8 @@ If running the script from the ExtendScript Toolkit, ensure `Do Not Break on Gua
 
 ## psd_to_spine.jsx
 
+To download, right click [psd_to_spine.jsx](https://github.com/EsotericSoftware/spine-scripts/raw/master/aftereffects/psd_to_spine.jsx) and choose `Save As`.
+
 This script differs from the [PhotoshopToSpine script](https://github.com/EsotericSoftware/spine-scripts/blob/master/photoshop/PhotoshopToSpine.jsx) to work with the new Photoshop CC [image generator](http://blogs.adobe.com/photoshopdotcom/2013/09/introducing-adobe-generator-for-photoshop-cc.html) feature.
 
 psd_to_spine.jsx only exports layers that have ".png" in their name. Also, a scale can be specified in the layer name. For example, "25% foo.png" will write a PNG that is 25% of the layer size and will add `"scaleX": 4.0, "scaleY": 4.0` to the Spine JSON output.
@@ -54,6 +58,8 @@ Some notable things that aren't supported:
 * eliminating duplicate images (can be done using Spine's [texture packer](http://esotericsoftware.com/spine-texture-packer))
 
 ## spine_migration.py
+
+To download, right click [spine_migration.py](https://github.com/EsotericSoftware/spine-scripts/raw/master/aftereffects/spine_migration.py) and choose `Save As`.
 
 Starting from Spine version 2.0.00, the way scale timeline values are computed has changed. This python script updates any spine JSON file below version 2.0.00 and recreates the scale timelines. It does not preserve the pretty formatting that Spine outputs. The script can be run multiple times without ill effect.
 
