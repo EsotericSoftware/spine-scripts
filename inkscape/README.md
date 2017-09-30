@@ -2,7 +2,8 @@
 
 ## Installation
 
-* Copy `InkscapeToSpine.inx` and `InkscapeToSpine.py` to the Inkscape extensions directory (eg `$HOME/.config/inkscape/extensions`).
+* To download, right click [InkscapeToSpine.py](https://github.com/EsotericSoftware/spine-scripts/raw/master/inkscape/InkscapeToSpine.py) and  [InkscapeToSpine.inx](https://github.com/EsotericSoftware/spine-scripts/raw/master/inkscape/InkscapeToSpine.inx) and choose `Save As`.
+* Move `InkscapeToSpine.inx` and `InkscapeToSpine.py` to the Inkscape extensions directory (eg `$HOME/.config/inkscape/extensions`).
 * Restart Inkscape.
 
 ## Usage
