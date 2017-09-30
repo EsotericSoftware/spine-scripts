@@ -393,13 +393,13 @@ function showSettingsDialog () {
 		settings.writeTemplate = writeTemplateCheckbox.value;
 		settings.ignoreHiddenLayers = ignoreHiddenLayersCheckbox.value;
 		settings.ignoreBackground = ignoreBackgroundCheckbox.value;
-		
+
 		var scaleValue = parseFloat(scaleText.text);
 		if (scaleValue > 0 && scaleValue <= 100) settings.scale = scaleValue / 100;
-		
+
 		settings.imagesDir = imagesDirText.text;
 		settings.jsonPath = jsonPathText.text;
-		
+
 		var paddingValue = parseInt(paddingText.text);
 		if (paddingValue >= 0) settings.padding = paddingValue;
 	}
@@ -562,7 +562,7 @@ function showProgressDialog () {
 function setProgress (percent, layerName) {
 	progress.bar.value = 10000 * percent;
 	progress.message.text = "Layer: " + layerName;
-	progress.dialog.active = true;
+	if (!progress.dialog.active) progress.dialog.active = true;
 }
 
 // PhotoshopToSpine utility:
@@ -729,12 +729,12 @@ function scaleImage () {
 	activeDocument.resizeImage(UnitValue(imageSize, "px"), null, null, ResampleMethod.BICUBICSHARPER);
 }
 
-var historyIndex;
+var history;
 function storeHistory () {
-	historyIndex = activeDocument.historyStates.length - 1;
+	history = activeDocument.activeHistoryState;
 }
 function restoreHistory () {
-	activeDocument.activeHistoryState = activeDocument.historyStates[historyIndex];
+	activeDocument.activeHistoryState = history;
 }
 
 function scriptDir () {
