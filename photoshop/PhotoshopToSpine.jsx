@@ -193,8 +193,8 @@ function run () {
 				restoreHistory();
 				if (layerCount < totalLayerCount) layer.remove();
 
-				x += Math.round(width) / 2;
-				y += Math.round(height) / 2;
+				x += Math.round(width) / 2 - settings.padding;
+				y += Math.round(height) / 2 - settings.padding;
 
 				// Make relative to the Photoshop document ruler origin.
 				x -= xOffSet * settings.scale;
