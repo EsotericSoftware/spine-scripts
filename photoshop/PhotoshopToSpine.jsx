@@ -55,6 +55,14 @@ function run () {
 	activeDocument.duplicate();
 	deselectLayers();
 
+	try {
+		convertToRGB();
+	} catch (ignored) {}
+	if (app.activeDocument.colorProfileName.indexOf("sRGB") != 0) {
+		alert("Please change the image mode to RGB color.");
+		return;
+	}
+
 	// Output template image.
 	if (settings.writeTemplate) {
 		if (settings.scale != 1) {
@@ -441,7 +449,7 @@ function showSettingsDialog () {
 				+ "with \"Debug > Do not break on guarded exceptions\" unchecked.");
 			debugger;
 		} finally {
-			if (activeDocument != originalDoc) activeDocument.close(SaveOptions.DONOTSAVECHANGES);
+		//	if (activeDocument != originalDoc) activeDocument.close(SaveOptions.DONOTSAVECHANGES);
 			app.preferences.rulerUnits = rulerUnits;
 			dialog.close();
 		}
@@ -788,9 +796,17 @@ function bgColor (control, r, g, b) {
 function deselectLayers () {
 	var desc = new ActionDescriptor();
 	var ref = new ActionReference();
-	ref.putEnumerated(cID('Lyr '), cID('Ordn'), cID('Trgt'));
-	desc.putReference(cID('null'), ref);
-	executeAction(sID('selectNoLayers'), desc, DialogModes.NO);
+	ref.putEnumerated(cID("Lyr "), cID("Ordn"), cID("Trgt"));
+	desc.putReference(cID("null"), ref);
+	executeAction(sID("selectNoLayers"), desc, DialogModes.NO);
+}
+
+function convertToRGB () {
+	var desc = new ActionDescriptor();
+	desc.putClass(cID("T   "), cID("RGBM"));
+	desc.putBoolean(cID("Mrge"), false);
+	desc.putBoolean(cID("Rstr"), true);
+	executeAction(cID("CnvM"), desc, DialogModes.NO);
 }
 
 // JavaScript utility:
