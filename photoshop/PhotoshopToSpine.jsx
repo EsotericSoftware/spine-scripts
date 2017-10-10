@@ -73,7 +73,7 @@ function run () {
 		var file = new File(imagesDir + "template.png");
 		if (file.exists) file.remove();
 
-		activeDocument.saveAs(file, new PNGSaveOptions(), true, Extension.LOWERCASE);
+		savePNG(file);
 
 		if (settings.scale != 1) restoreHistory();
 	}
@@ -195,7 +195,7 @@ function run () {
 
 					var file = new File(imagesDir + attachmentName);
 					file.parent.create();
-					activeDocument.saveAs(file, new PNGSaveOptions(), true, Extension.LOWERCASE);
+					savePNG(file);
 				}
 
 				restoreHistory();
@@ -449,7 +449,7 @@ function showSettingsDialog () {
 				+ "with \"Debug > Do not break on guarded exceptions\" unchecked.");
 			debugger;
 		} finally {
-		//	if (activeDocument != originalDoc) activeDocument.close(SaveOptions.DONOTSAVECHANGES);
+			if (activeDocument != originalDoc) activeDocument.close(SaveOptions.DONOTSAVECHANGES);
 			app.preferences.rulerUnits = rulerUnits;
 			dialog.close();
 		}
@@ -807,6 +807,12 @@ function convertToRGB () {
 	desc.putBoolean(cID("Mrge"), false);
 	desc.putBoolean(cID("Rstr"), true);
 	executeAction(cID("CnvM"), desc, DialogModes.NO);
+}
+
+function savePNG (file) {
+	var options = new PNGSaveOptions();
+	options.compression = 9;
+	activeDocument.saveAs(file, options, true, Extension.LOWERCASE);
 }
 
 // JavaScript utility:
