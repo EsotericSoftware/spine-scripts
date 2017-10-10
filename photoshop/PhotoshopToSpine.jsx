@@ -58,7 +58,7 @@ function run () {
 	try {
 		convertToRGB();
 	} catch (ignored) {}
-	if (app.activeDocument.colorProfileName.indexOf("sRGB") != 0) {
+	if (app.activeDocument.mode != DocumentMode.RGB) {
 		alert("Please change the image mode to RGB color.");
 		return;
 	}
