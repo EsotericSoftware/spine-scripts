@@ -252,7 +252,7 @@ function showSettingsDialog () {
 	}
 
 	// Layout.
-	var dialog = new Window("dialog", "PhotoshopToSpine"), group;
+	var dialog = new Window("dialog", "PhotoshopToSpine v2.1"), group;
 	dialog.alignChildren = "fill";
 
 	try {
