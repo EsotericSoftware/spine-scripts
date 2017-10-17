@@ -12,7 +12,8 @@ To see the Spine logo on the dialog, you may optionally right click [logo.png](h
 
 ## Usage
 
-Run the `PhotoshopToSpine.jsx` script file by choosing `File` > `Scripts` > `Browse` in Photoshop.
+Run the `PhotoshopToSpine.jsx` script file by choosing `File` > `Scripts` > `Browse` in Photoshop.  
+(You can also run the script by dragging the script file onto the Photoshop window's menu bar or toolbar.)
 
 ![](http://n4te.com/x/266-tT4Y.png)
 
