@@ -252,7 +252,7 @@ function showSettingsDialog () {
 	}
 
 	// Layout.
-	var dialog = new Window("dialog", "PhotoshopToSpine v2.1"), group;
+	var dialog = new Window("dialog", "PhotoshopToSpine v2.2"), group;
 	dialog.alignChildren = "fill";
 
 	try {
@@ -649,6 +649,12 @@ function collectLayers (parent, collect) {
 			layer.remove();
 			continue;
 		}
+
+		if (parent.allLocked) {
+			activeDocument.activeLayer = layer;
+			parent.allLocked = false;
+		}
+		layer.allLocked = false;
 
 		layer.visible = false;
 		collect.push(layer);
