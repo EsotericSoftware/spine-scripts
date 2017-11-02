@@ -13,6 +13,8 @@ app.bringToFront();
 //     * Neither the name of Esoteric Software nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+var scriptVersion = 2.3; // This is incremented every time the script is modified, so you know if you have the latest.
+
 var cs2 = parseInt(app.version) < 10;
 
 var originalDoc;
@@ -21,9 +23,10 @@ try {
 } catch (ignored) {}
 
 var defaultSettings = {
-	writeTemplate: false,
 	ignoreHiddenLayers: false,
 	ignoreBackground: true,
+	writeTemplate: false,
+	writeJson: true,
 	scale: 1,
 	padding: 1,
 	imagesDir: "./images/",
@@ -88,11 +91,16 @@ function run () {
 		executeAction(sID("rasterizeAll"), undefined, DialogModes.NO);
 	} catch (ignored) {}
 
+	// Add a history item to prevent layer visibility from changing by the active layer being reset to the top.
+	activeDocument.artLayers.add();
+
 	// Collect and hide layers.
 	var layers = [];
 	collectLayers(activeDocument, layers);
 	var layersCount = layers.length;
-	activeDocument.artLayers.add(); // Add a history item to prevent restoreHistory from affecting layer visibility.
+
+	// Add a history item to prevent layer visibility from changing by restoreHistory.
+	activeDocument.artLayers.add();
 
 	// Store the slot names and layers for each skin.
 	var slots = {}, skins = { "default": [] };
@@ -199,7 +207,7 @@ function run () {
 				}
 
 				restoreHistory();
-				if (layerCount < totalLayerCount) layer.remove();
+				if (layerCount < totalLayerCount) deleteLayer(layer);
 
 				x += Math.round(width) / 2 - settings.padding;
 				y += Math.round(height) / 2 - settings.padding;
@@ -225,7 +233,7 @@ function run () {
 	activeDocument.close(SaveOptions.DONOTSAVECHANGES);
 
 	// Output JSON file.
-	if (settings.jsonPath) {
+	if (settings.writeJson && settings.jsonPath) {
 		jsonFile.encoding = "UTF-8";
 		jsonFile.remove();
 		jsonFile.open("w", "TEXT");
@@ -252,7 +260,7 @@ function showSettingsDialog () {
 	}
 
 	// Layout.
-	var dialog = new Window("dialog", "PhotoshopToSpine v2.2"), group;
+	var dialog = new Window("dialog", "PhotoshopToSpine v" + scriptVersion), group;
 	dialog.alignChildren = "fill";
 
 	try {
@@ -263,25 +271,23 @@ function showSettingsDialog () {
 		settingsGroup.margins = [10,15,10,10];
 		settingsGroup.alignChildren = "fill";
 		var checkboxGroup = settingsGroup.add("group");
-			checkboxGroup.alignChildren = ["left", "top"];
+			checkboxGroup.alignChildren = ["left", ""];
+			checkboxGroup.orientation = "row";
 			group = checkboxGroup.add("group");
 				group.orientation = "column";
 				group.alignChildren = ["left", ""];
 				var ignoreHiddenLayersCheckbox = group.add("checkbox", undefined, " Ignore hidden layers");
 				ignoreHiddenLayersCheckbox.value = settings.ignoreHiddenLayers;
-			group = checkboxGroup.add("group");
-				group.orientation = "column";
-				group.alignChildren = ["left", ""];
-				var writeTemplateCheckbox = group.add("checkbox", undefined, " Write template image");
-				writeTemplateCheckbox.value = settings.writeTemplate;
-		checkboxGroup = settingsGroup.add("group");
-			checkboxGroup.alignment = ["left", ""];
+				var ignoreBackgroundCheckbox = group.add("checkbox", undefined, " Ignore background layer");
+				ignoreBackgroundCheckbox.value = settings.ignoreBackground;
 			group = checkboxGroup.add("group");
 				group.orientation = "column";
 				group.alignChildren = ["left", ""];
 				group.alignment = ["", "top"];
-				var ignoreBackgroundCheckbox = group.add("checkbox", undefined, " Ignore background layer");
-				ignoreBackgroundCheckbox.value = settings.ignoreBackground;
+				var writeJsonCheckbox = group.add("checkbox", undefined, " Write Spine JSON");
+				writeJsonCheckbox.value = settings.writeJson;
+				var writeTemplateCheckbox = group.add("checkbox", undefined, " Write template image");
+				writeTemplateCheckbox.value = settings.writeTemplate;
 		var scaleText, paddingText, scaleSlider, paddingSlider;
 		if (!cs2) {
 			var slidersGroup = settingsGroup.add("group");
@@ -360,6 +366,7 @@ function showSettingsDialog () {
 
 	// Tooltips.
 	writeTemplateCheckbox.helpTip = "When checked, a PNG is written for the currently visible layers.";
+	writeJsonCheckbox.helpTip = "When checked, a Spine JSON file is written.";
 	scaleSlider.helpTip = "Scales the PNG files. Useful when using higher resolution art in Photoshop than in Spine.";
 	paddingSlider.helpTip = "Blank pixels around the edge of each image. Can avoid aliasing artifacts for opaque pixels along the image edge.";
 	imagesDirText.helpTip = "The folder to write PNGs. Begin with \"./\" to be relative to the PSD file. Blank to disable writing PNGs.";
@@ -398,9 +405,10 @@ function showSettingsDialog () {
 	imagesDirText.onChanging();
 
 	function updateSettings () {
-		settings.writeTemplate = writeTemplateCheckbox.value;
 		settings.ignoreHiddenLayers = ignoreHiddenLayersCheckbox.value;
 		settings.ignoreBackground = ignoreBackgroundCheckbox.value;
+		settings.writeTemplate = writeTemplateCheckbox.value;
+		settings.writeJson = writeJsonCheckbox.value;
 
 		var scaleValue = parseFloat(scaleText.text);
 		if (scaleValue > 0 && scaleValue <= 100) settings.scale = scaleValue / 100;
@@ -425,9 +433,10 @@ function showSettingsDialog () {
 		updateSettings();
 		saveSettings();
 
-		writeTemplateCheckbox.enabled = false;
 		ignoreHiddenLayersCheckbox.enabled = false;
 		ignoreBackgroundCheckbox.enabled = false;
+		writeTemplateCheckbox.enabled = false;
+		writeJsonCheckbox.enabled = false;
 		scaleText.enabled = false;
 		scaleSlider.enabled = false;
 		paddingText.enabled = false;
@@ -575,25 +584,37 @@ function setProgress (percent, layerName) {
 
 // PhotoshopToSpine utility:
 
+function unlock (layer) {
+	if (layer.allLocked) layer.allLocked = false;
+	if (!layer.layers) return;
+	for (var i = layer.layers.length - 1; i >= 0; i--)
+		unlock(layer.layers[i]);
+}
+
+function deleteLayer (layer) {
+	unlock(layer);
+	layer.remove();
+}
+
 function collectLayers (parent, collect) {
 	for (var i = parent.layers.length - 1; i >= 0; i--) {
 		if (cancel) return;
 		var layer = parent.layers[i];
 		if (settings.ignoreHiddenLayers && !layer.visible) {
-			layer.remove();
+			deleteLayer(layer);
 			continue;
 		}
 		if (settings.ignoreBackground && layer.isBackgroundLayer) {
-			layer.remove();
+			deleteLayer(layer);
 			continue;
 		}
 		if (hasTag(layer, "ignore")) {
-			layer.remove();
+			deleteLayer(layer);
 			continue;
 		}
 		var group = isGroup(layer);
 		if (!group && layer.bounds[2] == 0 && layer.bounds[3] == 0) {
-			layer.remove();
+			deleteLayer(layer);
 			continue;
 		}
 
@@ -634,27 +655,19 @@ function collectLayers (parent, collect) {
 		}
 
 		layer.wasVisible = layer.visible;
+		layer.visible = true;
+		if (layer.allLocked) layer.allLocked = false;
 
 		if (group && hasTag(layer, "merge")) {
-			layer.visible = true;
 			collectGroupMerge(layer);
 			if (!layer.layers || layer.layers.length == 0) continue;
 		} else if (layer.layers && layer.layers.length > 0) {
-			layer.visible = true;
 			collectLayers(layer, collect);
 			continue;
-		} else if (layer.kind == LayerKind.NORMAL)
-			process = true;
-		else {
-			layer.remove();
+		} else if (layer.kind != LayerKind.NORMAL) {
+			deleteLayer(layer);
 			continue;
 		}
-
-		if (parent.allLocked) {
-			activeDocument.activeLayer = layer;
-			parent.allLocked = false;
-		}
-		layer.allLocked = false;
 
 		layer.visible = false;
 		collect.push(layer);
@@ -666,11 +679,11 @@ function collectGroupMerge (parent) {
 	for (var i = parent.layers.length - 1; i >= 0; i--) {
 		var layer = parent.layers[i];
 		if (settings.ignoreHiddenLayers && !layer.visible) {
-			layer.remove();
+			deleteLayer(layer);
 			continue;
 		}
 		if (hasTag(layer, "ignore")) {
-			layer.remove();
+			deleteLayer(layer);
 			continue;
 		}
 
