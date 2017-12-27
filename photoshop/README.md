@@ -33,6 +33,7 @@ The Photoshop ruler origin corresponds to 0,0 in Spine. Set the ruler origin to 
 Tags in square brackets can be used in layer and group names to customize the output. The tags can be anywhere in the name, for example `head [slot]` or `[slot] head`.
 
 **Group names:**
+* `[bone]`  Slot and bone layers in the group are placed under a bone, named after the group. The bone is created at the center of the visible attachment.
 * `[slot]`  Layers in the group are placed in a slot, named after the group.
 * `[skin]` Layers in the group are placed in a skin, named after the group. Skin images are output in a subfolder for the skin.
 * `[merge]` Layers in the group are merged and a single image is output, named after the group.
