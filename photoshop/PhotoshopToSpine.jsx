@@ -13,7 +13,7 @@ app.bringToFront();
 //     * Neither the name of Esoteric Software nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-var scriptVersion = 2.3; // This is incremented every time the script is modified, so you know if you have the latest.
+var scriptVersion = 2.4; // This is incremented every time the script is modified, so you know if you have the latest.
 
 var cs2 = parseInt(app.version) < 10;
 
@@ -69,8 +69,8 @@ function run () {
 	// Output template image.
 	if (settings.writeTemplate) {
 		if (settings.scale != 1) {
-			scaleImage();
 			storeHistory();
+			scaleImage();
 		}
 
 		var file = new File(imagesDir + "template.png");
@@ -102,19 +102,50 @@ function run () {
 	// Add a history item to prevent layer visibility from changing by restoreHistory.
 	activeDocument.artLayers.add();
 
-	// Store the slot names and layers for each skin.
-	var slots = {}, skins = { "default": [] };
-	var slotsCount = 0, skinsCount = 0, totalLayerCount = 0;
+	// Store the bones, slot names, and layers for each skin.
+	var bones = { root: { name: "root", x: 0, y: 0, children: [] } };
+	var slots = {}, slotsCount = 0;
+	var skins = { "default": [] }, skinsCount = 0;
+	var totalLayerCount = 0;
 	outer:
 	for (var i = 0; i < layersCount; i++) {
 		var layer = layers[i];
 		layer.attachmentName = folders(layer, "") + stripTags(layer.name);
-		layer.slotName = hasTag(layer, "slot", layer.attachmentName);
 
-		if (!slots.hasOwnProperty(layer.slotName)) slotsCount++;
-		slots[layer.slotName] = layer.wasVisible ? layer.attachmentName : null;
+		var bone = null;
+		var boneLayer = findTagLayer(layer, "bone", null);
+		if (boneLayer) {
+			var boneName = stripTags(boneLayer.name);
+			var parent = bones[findTag(boneLayer.parent, "bone", "root")];
+			bone = bones[boneName];
+			if (bone) {
+				if (parent != bone.parent) {
+					alert("Multiple layers for the \"" + boneName + "\" bone have different parent bones:\n\n"
+						+ bone.parent.name + "\n"
+						+ parent.name);
+					return;
+				}
+			} else {
+				bones[boneName] = bone = { name: boneName, parent: parent, children: [] };
+				parent.children.push(bone);
+			}
+			if (layer.wasVisible) {
+				bone.x = (layer.bounds[0].as("px")) * settings.scale - settings.padding;
+				bone.x += (layer.bounds[2].as("px") - layer.bounds[0].as("px")) * settings.scale / 2 + settings.padding;
+				bone.y = (activeDocument.height.as("px") - layer.bounds[1].as("px")) * settings.scale + settings.padding;
+				bone.y -= (layer.bounds[3].as("px") - layer.bounds[1].as("px")) * settings.scale / 2 + settings.padding;
 
-		var skinName = hasTag(layer, "skin", "default");
+				// Make relative to the Photoshop document ruler origin.
+				bone.x -= xOffSet * settings.scale;
+				bone.y -= (activeDocument.height.as("px") - yOffSet) * settings.scale;
+			}
+		}
+
+		layer.slotName = findTag(layer, "slot", layer.attachmentName);
+		if (!slots[layer.slotName]) slotsCount++;
+		slots[layer.slotName] = { bone: bone, attachment: layer.wasVisible ? layer.attachmentName : null };
+
+		var skinName = findTag(layer, "skin", "default");
 		var skinSlots = skins[skinName];
 		if (!skinSlots) {
 			skins[skinName] = skinSlots = {};
@@ -135,35 +166,59 @@ function run () {
 		totalLayerCount++;
 	}
 
-	// Output skeleton and bones.
-	var json = '{"skeleton":{"images":"' + relImagesDir + '"},\n"bones":[{"name":"root"}],\n"slots":[\n';
+	// Output skeleton.
+	var json = '{ "skeleton": { "images": "' + relImagesDir + '" },\n"bones": [\n';
+
+	// Output bones.
+	function outputBone (bone) {
+		var json = bone.parent ? ",\n" : "";
+		json += '\t{ "name": ' + quote(bone.name);
+		var x = bone.x, y = bone.y;
+		if (bone.parent) {
+			x -= bone.parent.x;
+			y -= bone.parent.y;
+			json += ', "parent": ' + quote(bone.parent.name);
+		}
+		if (x) json += ', "x": ' + x;
+		if (y) json += ', "y": ' + y;
+		json += ' }';
+		for (var i = 0, n = bone.children.length; i < n; i++)
+			json += outputBone(bone.children[i]);
+		return json;
+	}
+	for (var boneName in bones) {
+		if (!bones.hasOwnProperty(boneName)) continue;
+		var bone = bones[boneName];
+		if (!bone.parent) json += outputBone(bone);
+	}
+	json += '\n],\n"slots": [\n';
 
 	// Output slots.
 	var slotIndex = 0;
 	for (var slotName in slots) {
 		if (!slots.hasOwnProperty(slotName)) continue;
-		var attachmentName = slots[slotName];
-		if (attachmentName)
-			json += '\t{"name":' + quote(slotName) + ',"bone":"root","attachment":' + quote(attachmentName) + '}';
-		else
-			json += '\t{"name":' + quote(slotName) + ',"bone":"root"}';
+		var slot = slots[slotName];
+		json += '\t{ "name": ' + quote(slotName) + ', "bone": ' + quote(slot.bone ? slot.bone.name : "root");
+		if (slot.attachment) json += ', "attachment": ' + quote(slot.attachment);
+		json += ' }';
 		slotIndex++;
 		json += slotIndex < slotsCount ? ",\n" : "\n";
 	}
-	json += '],\n"skins":{\n';
+	json += '],\n"skins": {\n';
 
 	// Output skins.
 	var skinIndex = 0, layerCount = 0;
 	for (var skinName in skins) {
 		if (!skins.hasOwnProperty(skinName)) continue;
-		json += '\t"' + skinName + '":{\n';
+		json += '\t"' + skinName + '": {\n';
 
 		var skinSlots = skins[skinName];
 		var skinSlotIndex = 0, skinSlotsCount = countAssocArray(skinSlots);
 		for (var slotName in skinSlots) {
 			if (!skinSlots.hasOwnProperty(slotName)) continue;
+			var bone = slots[slotName].bone;
 
-			json += '\t\t' + quote(slotName) + ':{\n';
+			json += '\t\t' + quote(slotName) + ': {\n';
 
 			var skinLayers = skinSlots[slotName];
 			var skinLayerIndex = 0, skinLayersCount = skinLayers.length;
@@ -216,11 +271,16 @@ function run () {
 				x -= xOffSet * settings.scale;
 				y -= (activeDocument.height.as("px") - yOffSet) * settings.scale;
 
-				json += "\t\t\t" + quote(placeholderName) + ':{';
-				if (attachmentName != placeholderName) json += '"name":' + quote(attachmentName) + ', ';
-				json += '"x":' + x + ',"y":' + y + ',"width":' + Math.round(width) + ',"height":' + Math.round(height);
+				if (bone) { // Make relative to parent bone.
+					x -= bone.x;
+					y -= bone.y;
+				}
 
-				json += "}" + (++skinLayerIndex < skinLayersCount ? ",\n" : "\n");
+				json += "\t\t\t" + quote(placeholderName) + ': { ';
+				if (attachmentName != placeholderName) json += '"name": ' + quote(attachmentName) + ', ';
+				json += '"x": ' + x + ', "y": ' + y + ', "width": ' + Math.round(width) + ', "height": ' + Math.round(height);
+
+				json += " }" + (++skinLayerIndex < skinLayersCount ? ",\n" : "\n");
 			}
 
 			json += "\t\t}" + (++skinSlotIndex < skinSlotsCount ? ",\n" : "\n");
@@ -228,7 +288,7 @@ function run () {
 
 		json += "\t\}" + (++skinIndex < skinsCount ? ",\n" : "\n");
 	}
-	json += '},\n"animations":{"animation":{}}\n}';
+	json += '},\n"animations": { "animation": {} }\n}';
 
 	activeDocument.close(SaveOptions.DONOTSAVECHANGES);
 
@@ -522,6 +582,7 @@ function showHelpDialog () {
 		+ "Tags in square brackets can be used in layer and group names to customize the output.\n"
 		+ "\n"
 		+ "Group names:\n"
+		+ "•  [bone]  Slot and bone layers in the group are placed under a bone, named after the group.\n"
 		+ "•  [slot]  Layers in the group are placed in a slot, named after the group.\n"
 		+ "•  [skin]  Layers in the group are placed in a skin, named after the group. Skin images are output in a subfolder for the skin.\n"
 		+ "•  [merge]  Layers in the group are merged and a single image is output, named after the group.\n"
@@ -608,7 +669,7 @@ function collectLayers (parent, collect) {
 			deleteLayer(layer);
 			continue;
 		}
-		if (hasTag(layer, "ignore")) {
+		if (findTag(layer, "ignore")) {
 			deleteLayer(layer);
 			continue;
 		}
@@ -658,7 +719,7 @@ function collectLayers (parent, collect) {
 		layer.visible = true;
 		if (layer.allLocked) layer.allLocked = false;
 
-		if (group && hasTag(layer, "merge")) {
+		if (group && findTag(layer, "merge")) {
 			collectGroupMerge(layer);
 			if (!layer.layers || layer.layers.length == 0) continue;
 		} else if (layer.layers && layer.layers.length > 0) {
@@ -682,7 +743,7 @@ function collectGroupMerge (parent) {
 			deleteLayer(layer);
 			continue;
 		}
-		if (hasTag(layer, "ignore")) {
+		if (findTag(layer, "ignore")) {
 			deleteLayer(layer);
 			continue;
 		}
@@ -693,6 +754,7 @@ function collectGroupMerge (parent) {
 
 function isValidGroupTag (tag) {
 	switch (tag) {
+	case "bone":
 	case "slot":
 	case "skin":
 	case "merge":
@@ -719,7 +781,7 @@ function stripTags (name) {
 	return trim(name.replace(/\[[^\]]+\]/g, ""));
 }
 
-function hasTagLayer (layer, tag) {
+function findTagLayer (layer, tag) {
 	while (layer) {
 		if (tag == "ignore" || isGroup(layer)) { // Non-group layers can only have ignore tag.
 			if (layer.name.toLowerCase().indexOf("[" + tag + "]") != -1) return layer;
@@ -729,8 +791,8 @@ function hasTagLayer (layer, tag) {
 	return null;
 }
 
-function hasTag (layer, tag, otherwise) {
-	var found = hasTagLayer(layer, tag);
+function findTag (layer, tag, otherwise) {
+	var found = findTagLayer(layer, tag);
 	return found ? stripTags(found.name) : otherwise;
 }
 
@@ -745,7 +807,7 @@ function jsonPath (jsonPath) {
 }
 
 function folders (layer, path) {
-	var folderLayer = hasTagLayer(layer, "folder");
+	var folderLayer = findTagLayer(layer, "folder");
 	return folderLayer ? folders(folderLayer.parent, stripTags(folderLayer.name) + "/" + path) : path;
 }
 
