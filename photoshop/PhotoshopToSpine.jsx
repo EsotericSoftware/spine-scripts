@@ -582,7 +582,7 @@ function showHelpDialog () {
 		+ "Tags in square brackets can be used in layer and group names to customize the output.\n"
 		+ "\n"
 		+ "Group names:\n"
-		+ "•  [bone]  Slot and bone layers in the group are placed under a bone, named after the group. The bone is created at the center of the visible attachment.\n"
+		+ "•  [bone]  Slot and bone layers in the group are placed under a bone, named after the group. The bone is created at the center of a visible attachment.\n"
 		+ "•  [slot]  Layers in the group are placed in a slot, named after the group.\n"
 		+ "•  [skin]  Layers in the group are placed in a skin, named after the group. Skin images are output in a subfolder for the skin.\n"
 		+ "•  [merge]  Layers in the group are merged and a single image is output, named after the group.\n"
