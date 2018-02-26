@@ -115,8 +115,19 @@ function run () {
 		var bone = null;
 		var boneLayer = findTagLayer(layer, "bone", null);
 		if (boneLayer) {
+			function getParentBone (boneLayer, bones) {
+				var parentName = findTag(boneLayer.parent, "bone", "root");
+				var parent = bones[parentName];
+				if (!parent) { // Parent bone group with no attachment layers.
+					var parentParent = getParentBone(boneLayer.parent, bones);
+					bones[parentName] = parent = { name: parentName, parent: parentParent, children: [], x: 0, y: 0 };
+					parentParent.children.push(parent);
+				}
+				return parent;
+			}
+			var parent = getParentBone(boneLayer, bones);
+
 			var boneName = stripTags(boneLayer.name);
-			var parent = bones[findTag(boneLayer.parent, "bone", "root")];
 			bone = bones[boneName];
 			if (bone) {
 				if (parent != bone.parent) {
