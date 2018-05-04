@@ -13,7 +13,7 @@ app.bringToFront();
 //     * Neither the name of Esoteric Software nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-var scriptVersion = 2.5; // This is incremented every time the script is modified, so you know if you have the latest.
+var scriptVersion = 2.6; // This is incremented every time the script is modified, so you know if you have the latest.
 
 var cs2 = parseInt(app.version) < 10;
 
@@ -27,6 +27,7 @@ var defaultSettings = {
 	ignoreBackground: true,
 	writeTemplate: false,
 	writeJson: true,
+	trimWhitespace: true,
 	scale: 1,
 	padding: 1,
 	imagesDir: "./images/",
@@ -253,12 +254,14 @@ function run () {
 
 				storeHistory();
 
-				var x = activeDocument.width.as("px") * settings.scale;
-				var y = activeDocument.height.as("px") * settings.scale;
-				if (!layer.isBackgroundLayer) activeDocument.trim(TrimType.TRANSPARENT, false, true, true, false);
-				x -= activeDocument.width.as("px") * settings.scale;
-				y -= activeDocument.height.as("px") * settings.scale;
-				if (!layer.isBackgroundLayer) activeDocument.trim(TrimType.TRANSPARENT, true, false, false, true);
+				if (settings.trimWhitespace) {
+					var x = activeDocument.width.as("px") * settings.scale;
+					var y = activeDocument.height.as("px") * settings.scale;
+					if (!layer.isBackgroundLayer) activeDocument.trim(TrimType.TRANSPARENT, false, true, true, false);
+					x -= activeDocument.width.as("px") * settings.scale;
+					y -= activeDocument.height.as("px") * settings.scale;
+					if (!layer.isBackgroundLayer) activeDocument.trim(TrimType.TRANSPARENT, true, false, false, true);
+				}
 				var width = activeDocument.width.as("px") * settings.scale + settings.padding * 2;
 				var height = activeDocument.height.as("px") * settings.scale + settings.padding * 2;
 
@@ -351,6 +354,8 @@ function showSettingsDialog () {
 				ignoreHiddenLayersCheckbox.value = settings.ignoreHiddenLayers;
 				var ignoreBackgroundCheckbox = group.add("checkbox", undefined, " Ignore background layer");
 				ignoreBackgroundCheckbox.value = settings.ignoreBackground;
+				var trimWhitespaceCheckbox = group.add("checkbox", undefined, " Trim whitespace");
+				trimWhitespaceCheckbox.value = settings.trimWhitespace;
 			group = checkboxGroup.add("group");
 				group.orientation = "column";
 				group.alignChildren = ["left", ""];
@@ -438,6 +443,7 @@ function showSettingsDialog () {
 	// Tooltips.
 	writeTemplateCheckbox.helpTip = "When checked, a PNG is written for the currently visible layers.";
 	writeJsonCheckbox.helpTip = "When checked, a Spine JSON file is written.";
+	trimWhitespaceCheckbox.helpTip = "When checked, blank pixels aroind the edges of each image are removed.";
 	scaleSlider.helpTip = "Scales the PNG files. Useful when using higher resolution art in Photoshop than in Spine.";
 	paddingSlider.helpTip = "Blank pixels around the edge of each image. Can avoid aliasing artifacts for opaque pixels along the image edge.";
 	imagesDirText.helpTip = "The folder to write PNGs. Begin with \"./\" to be relative to the PSD file. Blank to disable writing PNGs.";
@@ -480,6 +486,7 @@ function showSettingsDialog () {
 		settings.ignoreBackground = ignoreBackgroundCheckbox.value;
 		settings.writeTemplate = writeTemplateCheckbox.value;
 		settings.writeJson = writeJsonCheckbox.value;
+		settings.trimWhitespace = trimWhitespaceCheckbox.value;
 
 		var scaleValue = parseFloat(scaleText.text);
 		if (scaleValue > 0 && scaleValue <= 100) settings.scale = scaleValue / 100;
@@ -508,6 +515,7 @@ function showSettingsDialog () {
 		ignoreBackgroundCheckbox.enabled = false;
 		writeTemplateCheckbox.enabled = false;
 		writeJsonCheckbox.enabled = false;
+		trimWhitespaceCheckbox.enabled = false;
 		scaleText.enabled = false;
 		scaleSlider.enabled = false;
 		paddingText.enabled = false;
