@@ -13,7 +13,7 @@ app.bringToFront();
 //     * Neither the name of Esoteric Software nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-var scriptVersion = 2.6; // This is incremented every time the script is modified, so you know if you have the latest.
+var scriptVersion = 2.7; // This is incremented every time the script is modified, so you know if you have the latest.
 
 var cs2 = parseInt(app.version) < 10;
 
@@ -111,6 +111,7 @@ function run () {
 	outer:
 	for (var i = 0; i < layersCount; i++) {
 		var layer = layers[i];
+		if (layer.kind != LayerKind.NORMAL) continue;
 		layer.attachmentName = folders(layer, "") + stripTags(layer.name);
 
 		var bone = null;
@@ -156,6 +157,13 @@ function run () {
 		layer.slotName = findTag(layer, "slot", layer.attachmentName);
 		if (!slots[layer.slotName]) slotsCount++;
 		slots[layer.slotName] = { bone: bone, attachment: layer.wasVisible ? layer.attachmentName : null };
+
+		if (layer.blendMode == BlendMode.LINEARDODGE)
+			slots[layer.slotName].blend = "additive";
+		else if (layer.blendMode == BlendMode.MULTIPLY)
+			slots[layer.slotName].blend = "multiply";
+		else if (layer.blendMode == BlendMode.SCREEN)
+			slots[layer.slotName].blend = "screen";
 
 		var skinName = findTag(layer, "skin", "default");
 		var skinSlots = skins[skinName];
@@ -212,6 +220,7 @@ function run () {
 		var slot = slots[slotName];
 		json += '\t{ "name": ' + quote(slotName) + ', "bone": ' + quote(slot.bone ? slot.bone.name : "root");
 		if (slot.attachment) json += ', "attachment": ' + quote(slot.attachment);
+		if (slot.blend) json += ', "blend": ' + quote(slot.blend);
 		json += ' }';
 		slotIndex++;
 		json += slotIndex < slotsCount ? ",\n" : "\n";
@@ -735,9 +744,12 @@ function collectLayers (parent, collect) {
 			return;
 		}
 
-		layer.wasVisible = layer.visible;
-		layer.visible = true;
-		if (layer.allLocked) layer.allLocked = false;
+		var normal = layer.kind == LayerKind.NORMAL;
+		if (normal) {
+			layer.wasVisible = layer.visible;
+			layer.visible = true;
+			if (layer.allLocked) layer.allLocked = false;
+		}
 
 		if (group && findTag(layer, "merge")) {
 			collectGroupMerge(layer);
@@ -745,12 +757,9 @@ function collectLayers (parent, collect) {
 		} else if (layer.layers && layer.layers.length > 0) {
 			collectLayers(layer, collect);
 			continue;
-		} else if (layer.kind != LayerKind.NORMAL) {
-			deleteLayer(layer);
-			continue;
 		}
 
-		layer.visible = false;
+		if (normal) layer.visible = false;
 		collect.push(layer);
 	}
 }
