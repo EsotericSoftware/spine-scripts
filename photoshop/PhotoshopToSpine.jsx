@@ -111,7 +111,7 @@ function run () {
 	outer:
 	for (var i = 0; i < layersCount; i++) {
 		var layer = layers[i];
-		if (layer.kind != LayerKind.NORMAL) continue;
+		if (layer.kind != LayerKind.NORMAL && !isGroup(layer)) continue;
 		layer.attachmentName = folders(layer, "") + stripTags(layer.name);
 
 		var bone = null;
@@ -744,8 +744,8 @@ function collectLayers (parent, collect) {
 			return;
 		}
 
-		var normal = layer.kind == LayerKind.NORMAL;
-		if (normal) {
+		var changeVisibility = layer.kind == LayerKind.NORMAL || group;
+		if (changeVisibility) {
 			layer.wasVisible = layer.visible;
 			layer.visible = true;
 			if (layer.allLocked) layer.allLocked = false;
@@ -759,7 +759,7 @@ function collectLayers (parent, collect) {
 			continue;
 		}
 
-		if (normal) layer.visible = false;
+		if (changeVisibility) layer.visible = false;
 		collect.push(layer);
 	}
 }
