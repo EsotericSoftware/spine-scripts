@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<inkscape-extension xmlns="http://www.inkscape.org/namespace/inkscape/extension">
+	<_name>Spine Export - Paths</_name>
+	<id>com.esotericsoftware.spine.inkscape.export.paths</id>
+	<param name="filename" type="string" min="0" max="10000" _gui-text="Export filename">~/paths.json</param>
+	<param name="own_slot" type="boolean" _gui-text="Export each path in its own slot">true</param>
+	<param name="selected_only" type="boolean" _gui-text="Export only selected paths">true</param>
+	<param name="corner_type" type="optiongroup" _gui-text="Corner type for open paths">
+		<option value="line">Line</option>
+		<option value="curve">Curve</option>
+	</param>
+	<effect needs-live-preview="false">
+		<object-type>all</object-type>
+		<effects-menu>
+			<submenu _name="Spine"/>
+		</effects-menu>
+	</effect>
+	<script>
+		<command reldir="extensions" interpreter="python">PathsToSpine.py</command>
+	</script>
+</inkscape-extension>
