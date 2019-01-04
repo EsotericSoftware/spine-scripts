@@ -13,7 +13,7 @@
 	<effect needs-live-preview="false">
 		<object-type>all</object-type>
 		<effects-menu>
-			<submenu _name="Export to Spine"/>
+			<submenu _name="Spine"/>
 		</effects-menu>
 	</effect>
 	<script>
