@@ -6,13 +6,25 @@ Please note that Adobe has made [CS2 available for download](https://helpx.adobe
 
 ## Download
 
-Right click [PhotoshopToSpine.jsx](https://github.com/EsotericSoftware/spine-scripts/raw/master/photoshop/PhotoshopToSpine.jsx) and choose `Save As` to save the script file.
+Right click [PhotoshopToSpine.jsx](https://github.com/EsotericSoftware/spine-scripts/raw/master/photoshop/PhotoshopToSpine.jsx) and choose `Save As` to save the script file. Make sure the extension of the file you are saving is `.jsx`, otherwise you might be mistakenly saving the web page instead.
 
 To see the Spine logo on the dialog, you may optionally right click [logo.png](https://github.com/EsotericSoftware/spine-scripts/raw/master/photoshop/logo.png) and choose `Save As` to save the logo image in the same folder as the script file.
 
-## Usage
+## Install
 
-Run the `PhotoshopToSpine.jsx` script file by dragging it to Photoshop window's menu bar or toolbar. The script can alsobe run by choosing `File` > `Scripts` > `Browse` in Photoshop.
+Navigate to the Photoshop installation folder, then choose the folder `Presents`, then `Scripts`. 
+On Windows the path can be similar to this:
+`C:\Program Files\Adobe\Adobe Photoshop CC 2019\Presets\Scripts`
+
+Copy the files `PhotoshopToSpine.jsx`  and `logo.png` inside the `Scripts` folder, then restart Photoshop.
+
+
+## Usage
+The script can be run by choosing `File` > `Scripts` > `PhotoshopToSpine` in Photoshop.
+
+If you didn't copy the files in the Photoshop directory, the script can be run by choosing `File` > `Scripts` > `Browse` in Photoshop.
+
+The script can also be run by dragging the file to Photoshop window's menu bar or toolbar if you're using Photoshop v19 or earlier.
 
 It can be helpful to create a Photoshop action that runs the script. A function key can be specified for the action, allowing the script to be run with a single key press.
 
