@@ -13,7 +13,7 @@ app.bringToFront();
 //     * Neither the name of Esoteric Software nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-var scriptVersion = 3.0; // This is incremented every time the script is modified, so you know if you have the latest.
+var scriptVersion = 3.1; // This is incremented every time the script is modified, so you know if you have the latest.
 
 var cs2 = parseInt(app.version) < 10;
 
@@ -102,9 +102,9 @@ function run () {
 	activeDocument.artLayers.add();
 
 	// Store the bones, slot names, and layers for each skin.
-	var bones = { root: { name: "root", x: 0, y: 0, children: [] } };
+	var bones = { _root: { name: "root", x: 0, y: 0, children: [] } };
 	var slots = {}, slotsCount = 0;
-	var skins = { "default": [] }, skinsCount = 0;
+	var skins = { _default: [] }, skinsCount = 0;
 	var totalLayerCount = 0;
 	outer:
 	for (var i = 0; i < layersCount; i++) {
@@ -115,20 +115,9 @@ function run () {
 		var bone = null;
 		var boneLayer = findTagLayer(layer, "bone", null);
 		if (boneLayer) {
-			function getParentBone (boneLayer, bones) {
-				var parentName = findTag(boneLayer.parent, "bone", "root");
-				var parent = bones[parentName];
-				if (!parent) { // Parent bone group with no attachment layers.
-					var parentParent = getParentBone(boneLayer.parent, bones);
-					bones[parentName] = parent = { name: parentName, parent: parentParent, children: [], x: 0, y: 0 };
-					parentParent.children.push(parent);
-				}
-				return parent;
-			}
 			var parent = getParentBone(boneLayer, bones);
-
 			var boneName = stripTags(boneLayer.name);
-			bone = bones[boneName];
+			bone = get(bones, boneName);
 			if (bone) {
 				if (parent != bone.parent) {
 					alert("Multiple layers for the \"" + boneName + "\" bone have different parent bones:\n\n"
@@ -137,7 +126,7 @@ function run () {
 					return;
 				}
 			} else {
-				bones[boneName] = bone = { name: boneName, parent: parent, children: [] };
+				set(bones, boneName, bone = { name: boneName, parent: parent, children: [] });
 				parent.children.push(bone);
 			}
 			if (layer.wasVisible) {
@@ -153,25 +142,25 @@ function run () {
 		}
 
 		layer.slotName = findTag(layer, "slot", layer.attachmentName);
-		if (!slots[layer.slotName]) slotsCount++;
-		slots[layer.slotName] = { bone: bone, attachment: layer.wasVisible ? layer.attachmentName : null };
-
+		if (!get(slots, layer.slotName)) slotsCount++;
+		var slot;
+		set(slots, layer.slotName, slot = { bone: bone, attachment: layer.wasVisible ? layer.attachmentName : null });
 		if (layer.blendMode == BlendMode.LINEARDODGE)
-			slots[layer.slotName].blend = "additive";
+			slot.blend = "additive";
 		else if (layer.blendMode == BlendMode.MULTIPLY)
-			slots[layer.slotName].blend = "multiply";
+			slot.blend = "multiply";
 		else if (layer.blendMode == BlendMode.SCREEN)
-			slots[layer.slotName].blend = "screen";
+			slot.blend = "screen";
 
 		var skinName = findTag(layer, "skin", "default");
-		var skinSlots = skins[skinName];
+		var skinSlots = get(skins, skinName);
 		if (!skinSlots) {
-			skins[skinName] = skinSlots = {};
+			set(skins, skinName, skinSlots = {});
 			skinsCount++;
 		}
 
-		var skinLayers = skinSlots[layer.slotName];
-		if (!skinLayers) skinSlots[layer.slotName] = skinLayers = [];
+		var skinLayers = get(skinSlots, layer.slotName);
+		if (!skinLayers) set(skinSlots, layer.slotName, skinLayers = []);
 		for (var ii = 0, nn = skinLayers.length; ii < nn; ii++) {
 			if (skinLayers[ii].attachmentName == layer.attachmentName) {
 				alert("Multiple layers for the \"" + skinName + "\" skin have the same name:\n\n"
@@ -216,6 +205,7 @@ function run () {
 	for (var slotName in slots) {
 		if (!slots.hasOwnProperty(slotName)) continue;
 		var slot = slots[slotName];
+		slotName = stripName(slotName);
 		json += '\t{ "name": ' + quote(slotName) + ', "bone": ' + quote(slot.bone ? slot.bone.name : "root");
 		if (slot.attachment) json += ', "attachment": ' + quote(slot.attachment);
 		if (slot.blend) json += ', "blend": ' + quote(slot.blend);
@@ -229,17 +219,19 @@ function run () {
 	var skinIndex = 0, layerCount = 0;
 	for (var skinName in skins) {
 		if (!skins.hasOwnProperty(skinName)) continue;
+		var skinSlots = skins[skinName];
+		skinName = stripName(skinName);
 		json += '\t"' + skinName + '": {\n';
 
-		var skinSlots = skins[skinName];
 		var skinSlotIndex = 0, skinSlotsCount = countAssocArray(skinSlots);
 		for (var slotName in skinSlots) {
 			if (!skinSlots.hasOwnProperty(slotName)) continue;
 			var bone = slots[slotName].bone;
+			var skinLayers = skinSlots[slotName];
+			slotName = stripName(slotName);
 
 			json += '\t\t' + quote(slotName) + ': {\n';
 
-			var skinLayers = skinSlots[slotName];
 			var skinLayerIndex = 0, skinLayersCount = skinLayers.length;
 			for (var i = skinLayersCount - 1; i >= 0; i--) {
 				var layer = skinLayers[i];
@@ -823,6 +815,17 @@ function findTag (layer, tag, otherwise) {
 	return found ? stripTags(found.name) : otherwise;
 }
 
+function getParentBone (boneLayer, bones) {
+	var parentName = findTag(boneLayer.parent, "bone", "root");
+	var parent = get(bones, parentName);
+	if (!parent) { // Parent bone group with no attachment layers.
+		var parentParent = getParentBone(boneLayer.parent, bones);
+		set(bones, parentName, parent = { name: parentName, parent: parentParent, children: [], x: 0, y: 0 });
+		parentParent.children.push(parent);
+	}
+	return parent;
+}
+
 function jsonPath (jsonPath) {
 	if (endsWith(jsonPath, ".json")) {
 		var index = jsonPath.replace("\\", "/").lastIndexOf("/");
@@ -839,6 +842,16 @@ function folders (layer, path) {
 }
 
 // Photoshop utility:
+
+function get (object, name) {
+	return object["_" + name];
+}
+function set (object, name, value) {
+	object["_" + name] = value;
+}
+function stripName (name) {
+	return name.substring(1);
+}
 
 function scaleImage () {
 	var imageSize = activeDocument.width.as("px") * settings.scale;
