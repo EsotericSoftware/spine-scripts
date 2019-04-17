@@ -13,7 +13,7 @@ app.bringToFront();
 //     * Neither the name of Esoteric Software nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-var scriptVersion = 3.2; // This is incremented every time the script is modified, so you know if you have the latest.
+var scriptVersion = 3.3; // This is incremented every time the script is modified, so you know if you have the latest.
 
 var cs2 = parseInt(app.version) < 10;
 
@@ -36,8 +36,9 @@ var defaultSettings = {
 var settings = loadSettings();
 showSettingsDialog();
 
-var progress, cancel;
+var progress, cancel, errors;
 function run () {
+	errors = [];
 	showProgressDialog();
 
 	// Output dirs.
@@ -80,10 +81,7 @@ function run () {
 		if (settings.scale != 1) restoreHistory();
 	}
 
-	if (!settings.jsonPath && !settings.imagesDir) {
-		activeDocument.close(SaveOptions.DONOTSAVECHANGES);
-		return;
-	}
+	if (!settings.jsonPath && !settings.imagesDir) return;
 
 	// Rasterize all layers.
 	try {
@@ -108,6 +106,7 @@ function run () {
 	var totalLayerCount = 0;
 	outer:
 	for (var i = 0; i < layersCount; i++) {
+		if (cancel) return;
 		var layer = layers[i];
 		if (layer.kind != LayerKind.NORMAL && !isGroup(layer)) continue;
 
@@ -115,8 +114,8 @@ function run () {
 		name = name.replace(/[\x00-\x1f\x80-\x9f\\\/:"*?<>|]/g, "").replace(/^\.+$/, "").replace(/^__drag$/, ""); // Illegal.
 		name = name.replace(/^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$/i, ""); // Windows.
 		if (!name || name.length > 255) {
-			alert("Layer name is not a valid attachment name: " + layer.name);
-			return;
+			error("Layer name is not a valid attachment name:\n\n" + layer.name);
+			continue;
 		}
 		layer.attachmentName = folders(layer, "") + name;
 
@@ -128,10 +127,10 @@ function run () {
 			bone = get(bones, boneName);
 			if (bone) {
 				if (parent != bone.parent) {
-					alert("Multiple layers for the \"" + boneName + "\" bone have different parent bones:\n\n"
+					error("Multiple layers for the \"" + boneName + "\" bone have different parent bones:\n\n"
 						+ bone.parent.name + "\n"
 						+ parent.name);
-					return;
+					continue;
 				}
 			} else {
 				set(bones, boneName, bone = { name: boneName, parent: parent, children: [] });
@@ -171,14 +170,49 @@ function run () {
 		if (!skinLayers) set(skinSlots, layer.slotName, skinLayers = []);
 		for (var ii = 0, nn = skinLayers.length; ii < nn; ii++) {
 			if (skinLayers[ii].attachmentName == layer.attachmentName) {
-				alert("Multiple layers for the \"" + skinName + "\" skin have the same name:\n\n"
+				error("Multiple layers for the \"" + skinName + "\" skin have the same name:\n\n"
 					+ layer.attachmentName
 					+ "\n\nRename or use the [ignore] tag for the other layers.");
-				return;
+				continue outer;
 			}
 		}
 		skinLayers[skinLayers.length] = layer;
 		totalLayerCount++;
+	}
+
+	var n = errors.length;
+	if (n) {
+		var first = errors[0];
+		var file;
+		if (n > 1) {
+			try {
+				var all = "";
+				for (var i = 0; i < n; i++) {
+					if (i > 0) all += "---\n";
+					all += errors[i].replace(/\n\n/g, "\n") + "\n";
+				}
+				file = new File(jsonFile.parent + "/errors.txt");
+				file.parent.create();
+				file.encoding = "UTF-8";
+				file.remove();
+				file.open("w", "TEXT");
+				file.lineFeed = "\n";
+				file.write(all);
+				file.close();
+				if (n == 2)
+					first += "\n\nSee errors.txt for 1 additional error.";
+				else
+					first += "\n\nSee errors.txt for " + (n - 1) + " additional errors.";
+			} catch (e) {
+				if (n == 2)
+					first += "\n\nUnable to write 1 additional error to errors.text.\n"+e;
+				else
+					first += "\n\nUnable to write " + (n - 1) + " additional errors to errors.txt.\n"+e;
+			}
+		}
+		alert(first);
+		if (file) file.execute();
+		return;
 	}
 
 	// Output skeleton.
@@ -202,6 +236,7 @@ function run () {
 		return json;
 	}
 	for (var boneName in bones) {
+		if (cancel) return;
 		if (!bones.hasOwnProperty(boneName)) continue;
 		var bone = bones[boneName];
 		if (!bone.parent) json += outputBone(bone);
@@ -211,6 +246,7 @@ function run () {
 	// Output slots.
 	var slotIndex = 0;
 	for (var slotName in slots) {
+		if (cancel) return;
 		if (!slots.hasOwnProperty(slotName)) continue;
 		var slot = slots[slotName];
 		slotName = stripName(slotName);
@@ -245,10 +281,7 @@ function run () {
 				var layer = skinLayers[i];
 				layer.visible = true;
 
-				if (cancel) {
-					activeDocument.close(SaveOptions.DONOTSAVECHANGES);
-					return;
-				}
+				if (cancel) return;
 				setProgress(++layerCount / totalLayerCount, trim(layer.name));
 
 				var placeholderName = layer.attachmentName;
@@ -277,7 +310,7 @@ function run () {
 					if (settings.scale != 1) scaleImage();
 					if (settings.padding > 0) activeDocument.resizeCanvas(width, height, AnchorPosition.MIDDLECENTER);
 
-					var file = new File(imagesDir + attachmentName);
+					var file = new File(imagesDir + attachmentName + ".png");
 					file.parent.create();
 					savePNG(file);
 				}
@@ -315,6 +348,7 @@ function run () {
 
 	// Output JSON file.
 	if (settings.writeJson && settings.jsonPath) {
+		if (cancel) return;
 		jsonFile.encoding = "UTF-8";
 		jsonFile.remove();
 		jsonFile.open("w", "TEXT");
@@ -685,6 +719,7 @@ function deleteLayer (layer) {
 }
 
 function collectLayers (parent, collect) {
+	outer:
 	for (var i = parent.layers.length - 1; i >= 0; i--) {
 		if (cancel) return;
 		var layer = parent.layers[i];
@@ -719,9 +754,8 @@ function collectLayers (parent, collect) {
 						message += "\n\nThe [" + tag + "] tag is only valid for layers, not for groups.";
 					else
 						message += "\n\nThe [" + tag + "] tag is not a valid tag.";
-					alert(message);
-					cancel = true;
-					return;
+					error(message);
+					continue outer;
 				}
 			} else if (!isValidLayerTag(tag)) {
 				var message = "Invalid layer name:\n\n" + layer.name;
@@ -729,17 +763,15 @@ function collectLayers (parent, collect) {
 					message += "\n\nThe [" + tag + "] tag is only valid for groups, not for layers.";
 				else
 					message += "\n\nThe [" + tag + "] tag is not a valid tag.";
-				alert(message);
-				cancel = true;
-				return;
+				error(message);
+				continue outer;
 			}
 		}
 
 		// Ensure only one tag.
 		if (layer.name.replace(/\[[^\]]+\]/, "").search(/\[[^\]]+\]/) != -1) {
-			alert("A " + (group ? "group" : "layer") + " name must not have more than one tag:\n" + layer.name);
-			cancel = true;
-			return;
+			error("A " + (group ? "group" : "layer") + " name must not have more than one tag:\n" + layer.name);
+			continue outer;
 		}
 
 		var changeVisibility = layer.kind == LayerKind.NORMAL || group;
@@ -849,6 +881,10 @@ function folders (layer, path) {
 	return folderLayer ? folders(folderLayer.parent, stripTags(folderLayer.name) + "/" + path) : path;
 }
 
+function error (message) {
+	errors.push(message);
+}
+
 // Photoshop utility:
 
 function get (object, name) {
@@ -941,7 +977,7 @@ function convertToRGB () {
 
 function savePNG (file) {
 	var options = new PNGSaveOptions();
-	options.compression = 9;
+	options.compression = 6;
 	activeDocument.saveAs(file, options, true, Extension.LOWERCASE);
 }
 
