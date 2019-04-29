@@ -6,7 +6,7 @@ Please note that Adobe has made [CS2 available for download](https://helpx.adobe
 
 ## Download
 
-Right click [PhotoshopToSpine.jsx](https://github.com/EsotericSoftware/spine-scripts/raw/master/photoshop/PhotoshopToSpine.jsx) and choose `Save As` to save the script file. Make sure the extension of the file you are saving is `.jsx`, otherwise you might be mistakenly saving the web page instead.
+Right click this link: [PhotoshopToSpine.jsx](https://github.com/EsotericSoftware/spine-scripts/raw/master/photoshop/PhotoshopToSpine.jsx) (not the link above) and choose `Save Link As` to save the script file. Make sure the extension of the file you are saving is `.jsx`, otherwise you might be mistakenly saving the web page instead.
 
 To see the Spine logo on the dialog, you may optionally right click [logo.png](https://github.com/EsotericSoftware/spine-scripts/raw/master/photoshop/logo.png) and choose `Save As` to save the logo image in the same folder as the script file.
 
