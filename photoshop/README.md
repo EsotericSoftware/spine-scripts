@@ -56,3 +56,22 @@ Tags in square brackets can be used in layer and group names to customize the ou
 
 **Layer names:**
 * `[ignore]` The layer will not be output.
+
+## Blending modes and Adjustment layers
+
+The script will recognize a blending mode applied to a folder or layer if a counterpart exists in Spine.
+Currently 4 options are supported:
+
+* `Normal` corresponds to the `Normal` blending mode in Spine.
+* `Multiply` corresponds to the `Multiply` blending mode to the created slot in Spine.
+* `Screen` corresponds to the `Screen` blending mode in Spine.
+* `Linear Dodge` blending mode in Photoshop will result in the `Additive` blending mode in Spine.
+
+Adjustment layers can also be applied to all of the images that will be generated, without having to apply or merge them to each layer below them.
+
+
+## Tutorial video
+
+[![](https://esotericsoftware.com/img/photoshop-yt-video-thumbnail.png)](https://youtu.be/p7yZET00GeE)
+
+
