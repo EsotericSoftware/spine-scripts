@@ -6,23 +6,27 @@ Please note that Adobe has made [CS2 available for download](https://helpx.adobe
 
 ## Download
 
-Right click this link: [PhotoshopToSpine.jsx](https://github.com/EsotericSoftware/spine-scripts/raw/master/photoshop/PhotoshopToSpine.jsx) (not the link above) and choose `Save Link As` to save the script file. Make sure the extension of the file you are saving is `.jsx`, otherwise you might be mistakenly saving the web page instead.
+Right click this link: [PhotoshopToSpine.jsx](https://github.com/EsotericSoftware/spine-scripts/raw/master/photoshop/PhotoshopToSpine.jsx) (not the link above) and choose `Save Link As` to save the script file. Make sure the extension of the file you are saving is `.jsx` and that you aren't mistakenly saving the web page instead.
 
 To see the Spine logo on the dialog, you may optionally right click [logo.png](https://github.com/EsotericSoftware/spine-scripts/raw/master/photoshop/logo.png) and choose `Save As` to save the logo image in the same folder as the script file.
 
 ## Install
 
-Navigate to the Photoshop installation folder, then choose the folder `Presents`, then `Scripts`. 
-On Windows the path can be similar to this:
-`C:\Program Files\Adobe\Adobe Photoshop CC 2019\Presets\Scripts`
+Navigate to the Photoshop installation folder, then choose the folder `Presents`, then `Scripts`. On Windows the path is likely similar to this:
+```
+C:\Program Files\Adobe\Adobe Photoshop CC 2019\Presets\Scripts
+```
 
-Copy the files `PhotoshopToSpine.jsx`  and `logo.png` inside the `Scripts` folder, then restart Photoshop.
+Copy the files `PhotoshopToSpine.jsx` (and optionally `logo.png`) inside the `Scripts` folder, then restart Photoshop.
 
+## Tutorial video
+
+[![](https://esotericsoftware.com/img/photoshop-yt-video-thumbnail.png)](https://youtu.be/p7yZET00GeE)
 
 ## Usage
 The script can be run by choosing `File` > `Scripts` > `PhotoshopToSpine` in Photoshop.
 
-If you didn't copy the files in the Photoshop directory, the script can be run by choosing `File` > `Scripts` > `Browse` in Photoshop.
+If you didn't copy the files in the Photoshop directory, the script can also be run by choosing `File` > `Scripts` > `Browse` in Photoshop.
 
 The script can also be run by dragging the file to Photoshop window's menu bar or toolbar if you're using Photoshop v19 or earlier.
 
@@ -40,7 +44,7 @@ It can be helpful to create a Photoshop action that runs the script. A function 
 
 ## Origin
 
-The Photoshop ruler origin corresponds to 0,0 in Spine. Set the ruler origin to position the images in Spine relative to 0,0.
+The Photoshop ruler origin corresponds to 0,0 in Spine, allowing you to constrol the position of your skeleton in Spine.
 
 ## Tags
 
@@ -57,21 +61,15 @@ Tags in square brackets can be used in layer and group names to customize the ou
 **Layer names:**
 * `[ignore]` The layer will not be output.
 
-## Blending modes and Adjustment layers
+## Blending modes
 
-The script will recognize a blending mode applied to a folder or layer if a counterpart exists in Spine.
-Currently 4 options are supported:
+The script will recognize the following blending modes applied to a folder or layer. The slot in Spine will have the corresponding blending mode.
 
 * `Normal` corresponds to the `Normal` blending mode in Spine.
-* `Multiply` corresponds to the `Multiply` blending mode to the created slot in Spine.
+* `Multiply` corresponds to the `Multiply` blending mode in Spine.
 * `Screen` corresponds to the `Screen` blending mode in Spine.
-* `Linear Dodge` blending mode in Photoshop will result in the `Additive` blending mode in Spine.
+* `Linear Dodge` corresponds to the `Additive` blending mode in Spine.
 
-Adjustment layers can also be applied to all of the images that will be generated, without having to apply or merge them to each layer below them.
+## Adjustment layers
 
-
-## Tutorial video
-
-[![](https://esotericsoftware.com/img/photoshop-yt-video-thumbnail.png)](https://youtu.be/p7yZET00GeE)
-
-
+Adjustment layers can be used in Photoshop and are automatically applied to the generated images, without having to apply or merge them to each layer below them.
