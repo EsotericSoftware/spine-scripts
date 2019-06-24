@@ -13,7 +13,7 @@ app.bringToFront();
 //     * Neither the name of Esoteric Software nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-var scriptVersion = 3.3; // This is incremented every time the script is modified, so you know if you have the latest.
+var scriptVersion = 3.7; // This is incremented every time the script is modified, so you know if you have the latest.
 
 var cs2 = parseInt(app.version) < 10;
 
@@ -117,7 +117,9 @@ function run () {
 			error("Layer name is not a valid attachment name:\n\n" + layer.name);
 			continue;
 		}
-		layer.attachmentName = folders(layer, "") + name;
+		var folderPath = folders(layer, "");
+		layer.attachmentName = folderPath + name;
+		layer.attachmentPath = folderPath + findTagValue(layer, "path", name);
 
 		var bone = null;
 		var boneLayer = findTagLayer(layer, "bone", null);
@@ -172,7 +174,7 @@ function run () {
 			if (skinLayers[ii].attachmentName == layer.attachmentName) {
 				error("Multiple layers for the \"" + skinName + "\" skin have the same name:\n\n"
 					+ layer.attachmentName
-					+ "\n\nRename or use the [ignore] tag for the other layers.");
+					+ "\n\nRename or use the [path:name] or [ignore] tag for these layers.");
 				continue outer;
 			}
 		}
@@ -257,7 +259,7 @@ function run () {
 		slotIndex++;
 		json += slotIndex < slotsCount ? ",\n" : "\n";
 	}
-	json += '],\n"skins": {\n';
+	json += '],\n"skins": [\n';
 
 	// Output skins.
 	var skinIndex = 0, layerCount = 0;
@@ -284,8 +286,11 @@ function run () {
 				if (cancel) return;
 				setProgress(++layerCount / totalLayerCount, trim(layer.name));
 
-				var placeholderName = layer.attachmentName;
-				var attachmentName = (skinName == "default" ? "" : skinName + "/") + placeholderName;
+				var placeholderName = layer.attachmentName, attachmentName = placeholderName, attachmentPath = layer.attachmentPath;
+				if (skinName != "default") {
+					attachmentName = skinName + "/" + attachmentName;
+					attachmentPath = skinName + "/" + attachmentPath;
+				}
 
 				if (isGroup(layer)) {
 					activeDocument.activeLayer = layer;
@@ -294,9 +299,10 @@ function run () {
 
 				storeHistory();
 
-				var x = activeDocument.width.as("px") * settings.scale;
-				var y = activeDocument.height.as("px") * settings.scale;
+				var x = 0, y = 0;
 				if (settings.trimWhitespace) {
+					x = activeDocument.width.as("px") * settings.scale;
+					y = activeDocument.height.as("px") * settings.scale;
 					if (!layer.isBackgroundLayer) activeDocument.trim(TrimType.TRANSPARENT, false, true, true, false);
 					x -= activeDocument.width.as("px") * settings.scale;
 					y -= activeDocument.height.as("px") * settings.scale;
@@ -310,7 +316,7 @@ function run () {
 					if (settings.scale != 1) scaleImage();
 					if (settings.padding > 0) activeDocument.resizeCanvas(width, height, AnchorPosition.MIDDLECENTER);
 
-					var file = new File(imagesDir + attachmentName + ".png");
+					var file = new File(imagesDir + attachmentPath + ".png");
 					file.parent.create();
 					savePNG(file);
 				}
@@ -332,15 +338,16 @@ function run () {
 
 				json += "\t\t\t" + quote(placeholderName) + ': { ';
 				if (attachmentName != placeholderName) json += '"name": ' + quote(attachmentName) + ', ';
+				if (attachmentName != attachmentPath) json += '"path": ' + quote(attachmentPath) + ', ';
 				json += '"x": ' + x + ', "y": ' + y + ', "width": ' + Math.round(width) + ', "height": ' + Math.round(height);
 
 				json += " }" + (++skinLayerIndex < skinLayersCount ? ",\n" : "\n");
 			}
 
-			json += "\t\t}" + (++skinSlotIndex < skinSlotsCount ? ",\n" : "\n");
+			json += "\t\}" + (++skinIndex <= skinsCount ? ",\n" : "\n");
 		}
 
-		json += "\t\}" + (++skinIndex <= skinsCount ? ",\n" : "\n");
+		json += "\t\t}\n\t}" + (++skinIndex <= skinsCount ? ",\n" : "\n");
 	}
 	json += '},\n"animations": { "animation": {} }\n}';
 
@@ -635,9 +642,9 @@ function showHelpDialog () {
 	dialog.alignment = ["", "top"];
 
 	var helpText = dialog.add("statictext", undefined, ""
-		+ "This script writes layers as images and creates a JSON file to bring the images into Spine in the same positions and draw order as they had in Photoshop.\n"
+		+ "This script writes layers as images and creates a JSON file to bring the images into Spine with the same positions and draw order they had in Photoshop.\n"
 		+ "\n"
-		+ "The ruler origin corresponds to 0,0 in Spine.\n"
+		+ "The Photoshop ruler origin corresponds to 0,0 in Spine.\n"
 		+ "\n"
 		+ "Tags in square brackets can be used in layer and group names to customize the output.\n"
 		+ "\n"
@@ -650,7 +657,8 @@ function showHelpDialog () {
 		+ "•  [ignore]  Layers in the group and any child groups will not be output.\n"
 		+ "\n"
 		+ "Layer names:\n"
-		+ "•  [ignore]  The layer will not be output."
+		+ "•  [ignore]  The layer will not be output.\n"
+		+ "•  [path:name]  Specifies the image file name, which can be different from the attachment name. Whitespace trimming is required. Can be used on a group with [merge]."
 	, {multiline: true});
 	helpText.preferredSize.width = 325;
 
@@ -723,10 +731,7 @@ function collectLayers (parent, collect) {
 	for (var i = parent.layers.length - 1; i >= 0; i--) {
 		if (cancel) return;
 		var layer = parent.layers[i];
-		if (settings.ignoreHiddenLayers && !layer.visible) {
-			deleteLayer(layer);
-			continue;
-		}
+		if (settings.ignoreHiddenLayers && !layer.visible) continue;
 		if (settings.ignoreBackground && layer.isBackgroundLayer) {
 			deleteLayer(layer);
 			continue;
@@ -768,9 +773,15 @@ function collectLayers (parent, collect) {
 			}
 		}
 
-		// Ensure only one tag.
-		if (layer.name.replace(/\[[^\]]+\]/, "").search(/\[[^\]]+\]/) != -1) {
-			error("A " + (group ? "group" : "layer") + " name must not have more than one tag:\n" + layer.name);
+		// Path is only valid if trimming whitespace.
+		if (!settings.trimWhitespace && layer.name.search(/\[path:[^\]]+\]/i, "") != -1) {
+			error("The [path:name] tag requires whitespace trimming to be enabled:\n" + layer.name);
+			continue outer;
+		}
+
+		// Ensure only one tag, except path.
+		if (layer.name.replace(/\[path:[^\]]+\]/i, "").replace(/\[[^\]]+\]/, "").search(/\[[^\]]+\]/) != -1) {
+			error("A " + (group ? "group" : "layer") + " name has mutually exclusive tags:\n" + layer.name);
 			continue outer;
 		}
 
@@ -798,10 +809,7 @@ function collectGroupMerge (parent) {
 	if (!parent.layers) return;
 	for (var i = parent.layers.length - 1; i >= 0; i--) {
 		var layer = parent.layers[i];
-		if (settings.ignoreHiddenLayers && !layer.visible) {
-			deleteLayer(layer);
-			continue;
-		}
+		if (settings.ignoreHiddenLayers && !layer.visible) continue;
 		if (findTag(layer, "ignore")) {
 			deleteLayer(layer);
 			continue;
@@ -821,6 +829,7 @@ function isValidGroupTag (tag) {
 	case "ignore":
 		return true;
 	}
+	if (startsWith(tag, "path:")) return true;
 	return false;
 }
 
@@ -829,6 +838,7 @@ function isValidLayerTag (tag) {
 	case "ignore":
 		return true;
 	}
+	if (startsWith(tag, "path:")) return true;
 	return false;
 }
 
@@ -853,6 +863,20 @@ function findTagLayer (layer, tag) {
 function findTag (layer, tag, otherwise) {
 	var found = findTagLayer(layer, tag);
 	return found ? stripTags(found.name) : otherwise;
+}
+
+function findTagValueLayer (layer, tag) {
+	var re = new RegExp("\\[" + tag +":([^\\]]+)\\]", "i");
+	while (layer) {
+		var matches = re.exec(layer.name);
+		if (matches && matches.length) return trim(matches[1]);
+		layer = layer.parent;
+	}
+	return null;
+}
+
+function findTagValue (layer, tag, otherwise) {
+	return findTagValueLayer(layer, tag) || otherwise;
 }
 
 function getParentBone (boneLayer, bones) {

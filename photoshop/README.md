@@ -32,10 +32,12 @@ The script can also be run by dragging the file to Photoshop window's menu bar o
 
 It can be helpful to create a Photoshop action that runs the script. A function key can be specified for the action, allowing the script to be run with a single key press.
 
-![](http://n4te.com/x/266-tT4Y.png)
+![](http://n4te.com/x/6818-OdSW.png)
 
 * `Ignore hidden layers` Hidden groups and layers are not output.
 * `Ignore background layer` The background layer is not output.
+* `Trim whitespace` When checked, whitespace around the edges of each layer is removed. When unchecked, all images are the size of the PSD.
+* `Write Spine JSON` A JSON file is written that can be imported into Spine.
 * `Write template image` An image containing the currently visible layers is created for use as a template for positioning in Spine.
 * `Scale` Scales the layers before writing the image files. This is useful when using higher resolution art in Photoshop than you want to use in Spine.
 * `Padding` The number of pixels around each image. This can avoid aliasing artifacts for opaque pixels along the image edge.
@@ -60,6 +62,7 @@ Tags in square brackets can be used in layer and group names to customize the ou
 
 **Layer names:**
 * `[ignore]` The layer will not be output.
+* `[path:name]` Specifies the image file name, which can be different from the attachment name. Whitespace trimming is required. Can be used on a group with `[merge]`.
 
 ## Blending modes
 
