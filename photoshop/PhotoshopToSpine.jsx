@@ -376,10 +376,10 @@ function showSettingsDialog () {
 		alert("Please open a document before running the PhotoshopToSpine script.");
 		return;
 	}
-	if (!hasFilePath()) {
-		alert("Please save the document before running the PhotoshopToSpine script.");
-		return;
-	}
+	// if (!hasFilePath()) {
+	// 	alert("Please save the document before running the PhotoshopToSpine script.");
+	// 	return;
+	// }
 
 	// Layout.
 	var dialog = new Window("dialog", "PhotoshopToSpine v" + scriptVersion), group;
@@ -948,11 +948,11 @@ function scriptDir () {
 	return new File(file).parent + "/";
 }
 
-function hasFilePath () {
-	var action = new ActionReference();
-	action.putEnumerated(cID("Dcmn"), cID("Ordn"), cID("Trgt"));
-	return executeActionGet(action).hasKey(sID("fileReference"));
-}
+// function hasFilePath () {
+// 	var action = new ActionReference();
+// 	action.putEnumerated(cID("Dcmn"), cID("Ordn"), cID("Trgt"));
+// 	return executeActionGet(action).hasKey(sID("fileReference"));
+// }
 
 function absolutePath (path) {
 	path = trim(path);
