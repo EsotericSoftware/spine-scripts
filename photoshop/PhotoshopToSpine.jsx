@@ -376,10 +376,10 @@ function showSettingsDialog () {
 		alert("Please open a document before running the PhotoshopToSpine script.");
 		return;
 	}
-	// if (!hasFilePath()) {
-	// 	alert("Please save the document before running the PhotoshopToSpine script.");
-	// 	return;
-	// }
+	if (!originalDoc.saved) {
+		alert("Please save the document before running the PhotoshopToSpine script.");
+		return;
+	}
 
 	// Layout.
 	var dialog = new Window("dialog", "PhotoshopToSpine v" + scriptVersion), group;
