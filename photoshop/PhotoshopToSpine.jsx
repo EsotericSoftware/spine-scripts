@@ -13,7 +13,7 @@ app.bringToFront();
 //     * Neither the name of Esoteric Software nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-var scriptVersion = 3.9; // This is incremented every time the script is modified, so you know if you have the latest.
+var scriptVersion = 4.0; // This is incremented every time the script is modified, so you know if you have the latest.
 
 var cs2 = parseInt(app.version) < 10;
 
@@ -376,7 +376,9 @@ function showSettingsDialog () {
 		alert("Please open a document before running the PhotoshopToSpine script.");
 		return;
 	}
-	if (!hasFilePath()) {
+	try {
+		decodeURI(activeDocument.path);
+	} catch (e) {
 		alert("Please save the document before running the PhotoshopToSpine script.");
 		return;
 	}
@@ -946,12 +948,6 @@ function scriptDir () {
 		}
 	}
 	return new File(file).parent + "/";
-}
-
-function hasFilePath () {
-	var action = new ActionReference();
-	action.putEnumerated(cID("Dcmn"), cID("Ordn"), cID("Trgt"));
-	return executeActionGet(action).hasKey(sID("fileReference"));
 }
 
 function absolutePath (path) {
