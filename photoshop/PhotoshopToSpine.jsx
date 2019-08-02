@@ -344,7 +344,7 @@ function run () {
 				json += " }" + (++skinLayerIndex < skinLayersCount ? ",\n" : "\n");
 			}
 
-			json += "\t\t\}" + (++skinIndex <= skinsCount ? ",\n" : "\n");
+			json += "\t\t\}," + (++skinIndex <= skinsCount ? ",\n" : "\n");
 		}
 
 		json += "\t}" + (++skinIndex <= skinsCount ? ",\n" : "\n");
