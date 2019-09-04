@@ -121,7 +121,7 @@ class SpineExporter(inkex.Effect):
 		p = run_inkscape(["--shell"])
 		stdin = []
 		for k in ("x", "y", "width", "height"):
-			stdin.append("--file=%r --query-id=%r --query-%s" % (self.svg_file, id, k))
+			stdin.append("--file=%r --query-id=%s --query-%s " % (self.svg_file, id, k)) # line 124
 		stdin.append("")  # For the last command
 		stdout, stderr = p.communicate("\n".join(stdin))
 		# Remove the "Inkscape interactive shell mode" noise
