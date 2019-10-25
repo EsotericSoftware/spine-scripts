@@ -648,7 +648,7 @@ function showHelpDialog () {
 		+ "\n"
 		+ "The Photoshop ruler origin corresponds to 0,0 in Spine.\n"
 		+ "\n"
-		+ "Tags in square brackets can be used anywhere in layer and group names to customize the output. If \":name\" is omitted, the layer name is used.\n"
+		+ "Tags in square brackets can be used anywhere in layer and group names to customize the output. If \":name\" is omitted, the layer or group name is used.\n"
 		+ "\n"
 		+ "Group and layer names:\n"
 		+ "•  [bone] or [bone:name]  Layers, slots, and bones are placed under a bone. The bone is created at the center of a visible layer. Bone groups can be nested.\n"

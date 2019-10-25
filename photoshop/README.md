@@ -50,18 +50,19 @@ The Photoshop ruler origin corresponds to 0,0 in Spine, allowing you to constrol
 
 ## Tags
 
-Tags in square brackets can be used in layer and group names to customize the output. The tags can be anywhere in the name, for example `head [slot]` or `[slot] head`.
+Tags in square brackets can be used in layer and group names to customize the output. The tags can be anywhere in the name, for example `head [slot]` or `[slot] head`. If `:name` is omitted, the layer or group name is used.
+
+**Group and layer names:**
+* `[bone]` or `[bone:name]`  Layers, slots, and bones are placed under a bone. The bone is created at the center of a visible layer. Bone groups can be nested.
+* `[slot]` or `[slot:name]`  Layers are placed in a slot.
+* `[skin]` or `[skin:name]`  Layers are placed in a skin. Skin layer images are output in a subfolder for the skin.
+* `[folder]` or `[folder:name]`  Layers images are output in a subfolder. Folder groups can be nested.
+* `[ignore]` Layers, groups, and any child groups will not be output.\n"
 
 **Group names:**
-* `[bone]`  Slot and bone layers in the group are placed under a bone, named after the group. The bone is created at the center of a visible attachment.
-* `[slot]`  Layers in the group are placed in a slot, named after the group.
-* `[skin]` Layers in the group are placed in a skin, named after the group. Skin images are output in a subfolder for the skin.
-* `[merge]` Layers in the group are merged and a single image is output, named after the group.
-* `[folder]` Layers in the group will be output in a subfolder. Folder groups can be nested.
-* `[ignore]` Layers in the group and any child groups will not be output.
+* `[merge]` Layers in the group are merged and a single image is output.
 
 **Layer names:**
-* `[ignore]` The layer will not be output.
 * `[path:name]` Specifies the image file name, which can be different from the attachment name. Whitespace trimming is required. Can be used on a group with `[merge]`.
 
 ## Blending modes
