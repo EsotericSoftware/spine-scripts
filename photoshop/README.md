@@ -57,7 +57,7 @@ Tags in square brackets can be used in layer and group names to customize the ou
 * `[slot]` or `[slot:name]`  Layers are placed in a slot.
 * `[skin]` or `[skin:name]`  Layers are placed in a skin. Skin layer images are output in a subfolder for the skin.
 * `[folder]` or `[folder:name]`  Layers images are output in a subfolder. Folder groups can be nested.
-* `[ignore]` Layers, groups, and any child groups will not be output.\n"
+* `[ignore]` Layers, groups, and any child groups will not be output.
 
 **Group names:**
 * `[merge]` Layers in the group are merged and a single image is output.
