@@ -13,7 +13,7 @@ app.bringToFront();
 //     * Neither the name of Esoteric Software nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-var scriptVersion = 4.1; // This is incremented every time the script is modified, so you know if you have the latest.
+var scriptVersion = 4.2; // This is incremented every time the script is modified, so you know if you have the latest.
 
 var cs2 = parseInt(app.version) < 10;
 
@@ -119,13 +119,13 @@ function run () {
 		}
 		var folderPath = folders(layer, "");
 		layer.attachmentName = folderPath + name;
-		layer.attachmentPath = folderPath + findTagValue(layer, "path", name);
+		layer.attachmentPath = folderPath + (findTagValue(layer, "path") || name);
 
 		var bone = null;
-		var boneLayer = findTagLayer(layer, "bone", null);
+		var boneLayer = findTagLayer(layer, "bone");
 		if (boneLayer) {
 			var parent = getParentBone(boneLayer, bones);
-			var boneName = stripTags(boneLayer.name);
+			var boneName = findTagValue(boneLayer, "bone");
 			bone = get(bones, boneName);
 			if (bone) {
 				if (parent != bone.parent) {
@@ -150,7 +150,7 @@ function run () {
 			}
 		}
 
-		layer.slotName = findTag(layer, "slot", layer.attachmentName);
+		layer.slotName = findTagValue(layer, "slot") || layer.attachmentName;
 		if (!get(slots, layer.slotName)) slotsCount++;
 		var slot;
 		set(slots, layer.slotName, slot = { bone: bone, attachment: layer.wasVisible ? layer.attachmentName : null });
@@ -161,7 +161,7 @@ function run () {
 		else if (layer.blendMode == BlendMode.SCREEN)
 			slot.blend = "screen";
 
-		var skinName = findTag(layer, "skin", "default");
+		var skinName = findTagValue(layer, "skin") || "default";
 		var skinSlots = get(skins, skinName);
 		if (!skinSlots) {
 			set(skins, skinName, skinSlots = {});
@@ -648,18 +648,19 @@ function showHelpDialog () {
 		+ "\n"
 		+ "The Photoshop ruler origin corresponds to 0,0 in Spine.\n"
 		+ "\n"
-		+ "Tags in square brackets can be used in layer and group names to customize the output.\n"
+		+ "Tags in square brackets can be used anywhere in layer and group names to customize the output. If \":name\" is omitted, the layer name is used.\n"
+		+ "\n"
+		+ "Group and layer names:\n"
+		+ "•  [bone] or [bone:name]  Layers, slots, and bones are placed under a bone. The bone is created at the center of a visible layer. Bone groups can be nested.\n"
+		+ "•  [slot] or [slot:name]  Layers are placed in a slot.\n"
+		+ "•  [skin] or [skin:name]  Layers are placed in a skin. Skin layer images are output in a subfolder for the skin.\n"
+		+ "•  [folder] or [folder:name]  Layers images are output in a subfolder. Folder groups can be nested.\n"
+		+ "•  [ignore]  Layers, groups, and any child groups will not be output.\n"
 		+ "\n"
 		+ "Group names:\n"
-		+ "•  [bone]  Slot and bone layers in the group are placed under a bone, named after the group. The bone is created at the center of a visible attachment.\n"
-		+ "•  [slot]  Layers in the group are placed in a slot, named after the group.\n"
-		+ "•  [skin]  Layers in the group are placed in a skin, named after the group. Skin images are output in a subfolder for the skin.\n"
-		+ "•  [merge]  Layers in the group are merged and a single image is output, named after the group.\n"
-		+ "•  [folder]  Layers in the group will be output in a subfolder. Folder groups can be nested.\n"
-		+ "•  [ignore]  Layers in the group and any child groups will not be output.\n"
+		+ "•  [merge]  Layers in the group are merged and a single image is output.\n"
 		+ "\n"
 		+ "Layer names:\n"
-		+ "•  [ignore]  The layer will not be output.\n"
 		+ "•  [path:name]  Specifies the image file name, which can be different from the attachment name. Whitespace trimming is required. Can be used on a group with [merge]."
 	, {multiline: true});
 	helpText.preferredSize.width = 325;
@@ -738,7 +739,7 @@ function collectLayers (parent, collect) {
 			deleteLayer(layer);
 			continue;
 		}
-		if (findTag(layer, "ignore")) {
+		if (findTagLayer(layer, "ignore")) {
 			deleteLayer(layer);
 			continue;
 		}
@@ -794,7 +795,7 @@ function collectLayers (parent, collect) {
 			if (layer.allLocked) layer.allLocked = false;
 		}
 
-		if (group && findTag(layer, "merge")) {
+		if (group && findTagLayer(layer, "merge")) {
 			collectGroupMerge(layer);
 			if (!layer.layers || layer.layers.length == 0) continue;
 		} else if (layer.layers && layer.layers.length > 0) {
@@ -812,7 +813,7 @@ function collectGroupMerge (parent) {
 	for (var i = parent.layers.length - 1; i >= 0; i--) {
 		var layer = parent.layers[i];
 		if (settings.ignoreHiddenLayers && !layer.visible) continue;
-		if (findTag(layer, "ignore")) {
+		if (findTagLayer(layer, "ignore")) {
 			deleteLayer(layer);
 			continue;
 		}
@@ -822,24 +823,22 @@ function collectGroupMerge (parent) {
 }
 
 function isValidGroupTag (tag) {
-	switch (tag) {
-	case "bone":
-	case "slot":
-	case "skin":
-	case "merge":
-	case "folder":
-	case "ignore":
-		return true;
-	}
-	if (startsWith(tag, "path:")) return true;
-	return false;
+	return isValidLayerTag(tag) || tag == "merge";
 }
 
 function isValidLayerTag (tag) {
 	switch (tag) {
+	case "bone":
+	case "slot":
+	case "skin":
+	case "folder":
 	case "ignore":
 		return true;
 	}
+	if (startsWith(tag, "bone:")) return true;
+	if (startsWith(tag, "slot:")) return true;
+	if (startsWith(tag, "skin:")) return true;
+	if (startsWith(tag, "folder:")) return true;
 	if (startsWith(tag, "path:")) return true;
 	return false;
 }
@@ -853,36 +852,26 @@ function stripTags (name) {
 }
 
 function findTagLayer (layer, tag) {
+	var groupTag = isValidGroupTag(tag), layerTag = isValidLayerTag(tag);
+	var re = new RegExp("\\[" + tag + "(:[^\\]]+)?\\]", "i");
 	while (layer) {
-		if (tag == "ignore" || isGroup(layer)) { // Non-group layers can only have ignore tag.
-			if (layer.name.toLowerCase().indexOf("[" + tag + "]") != -1) return layer;
-		}
+		var group = isGroup(layer);
+		if (((group && groupTag) || (!group && layerTag)) && re.exec(layer.name)) return layer;
 		layer = layer.parent;
 	}
 	return null;
 }
 
-function findTag (layer, tag, otherwise) {
-	var found = findTagLayer(layer, tag);
-	return found ? stripTags(found.name) : otherwise;
-}
-
-function findTagValueLayer (layer, tag) {
-	var re = new RegExp("\\[" + tag +":([^\\]]+)\\]", "i");
-	while (layer) {
-		var matches = re.exec(layer.name);
-		if (matches && matches.length) return trim(matches[1]);
-		layer = layer.parent;
-	}
-	return null;
-}
-
-function findTagValue (layer, tag, otherwise) {
-	return findTagValueLayer(layer, tag) || otherwise;
+function findTagValue (layer, tag) {
+	layer = findTagLayer(layer, tag);
+	if (!layer) return null;
+	var matches = new RegExp("\\[" + tag + ":([^\\]]+)\\]", "i").exec(layer.name);
+	if (matches && matches.length) return trim(matches[1]);
+	return stripTags(layer.name);
 }
 
 function getParentBone (boneLayer, bones) {
-	var parentName = findTag(boneLayer.parent, "bone", "root");
+	var parentName = findTagValue(boneLayer.parent, "bone") || "root";
 	var parent = get(bones, parentName);
 	if (!parent) { // Parent bone group with no attachment layers.
 		var parentParent = getParentBone(boneLayer.parent, bones);
@@ -904,7 +893,7 @@ function jsonPath (jsonPath) {
 
 function folders (layer, path) {
 	var folderLayer = findTagLayer(layer, "folder");
-	return folderLayer ? folders(folderLayer.parent, stripTags(folderLayer.name) + "/" + path) : path;
+	return folderLayer ? folders(folderLayer.parent, findTagValue(folderLayer, "folder") + "/" + path) : path;
 }
 
 function error (message) {
