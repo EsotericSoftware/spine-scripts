@@ -13,7 +13,7 @@ app.bringToFront();
 //     * Neither the name of Esoteric Software nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-var scriptVersion = 4.7; // This is incremented every time the script is modified, so you know if you have the latest.
+var scriptVersion = 4.8; // This is incremented every time the script is modified, so you know if you have the latest.
 
 var cs2 = parseInt(app.version) < 10;
 
@@ -48,12 +48,7 @@ function run () {
 	var imagesFolder = new Folder(imagesDir);
 	imagesFolder.create();
 
-	// Get ruler origin.
-	var action = new ActionReference();
-	action.putEnumerated(cID("Dcmn"), cID("Ordn"), cID("Trgt"));
-	var result = executeActionGet(action);
-	var xOffSet = result.getInteger(sID("rulerOriginH")) >> 16;
-	var yOffSet = result.getInteger(sID("rulerOriginV")) >> 16;
+	var origin = rulerOrigin(), xOffSet = origin[0], yOffSet = origin[1];
 
 	activeDocument.duplicate();
 	deselectLayers();
@@ -83,10 +78,7 @@ function run () {
 
 	if (!settings.jsonPath && !settings.imagesDir) return;
 
-	// Rasterize all layers.
-	try {
-		executeAction(sID("rasterizeAll"), undefined, DialogModes.NO);
-	} catch (ignored) {}
+	rasterizeAll();
 
 	// Add a history item to prevent layer visibility from changing by the active layer being reset to the top.
 	activeDocument.artLayers.add();
@@ -293,6 +285,8 @@ function run () {
 					activeDocument.activeLayer = layer;
 					layer = layer.merge();
 				}
+
+				rasterizeStyles(layer);
 
 				storeHistory();
 
@@ -906,13 +900,32 @@ function stripName (name) {
 	return name.substring(1);
 }
 
-function scaleImage () {
+function rulerOrigin () {
+	var action = new ActionReference();
+	action.putEnumerated(cID("Dcmn"), cID("Ordn"), cID("Trgt"));
+	var result = executeActionGet(action);
+	return [result.getInteger(sID("rulerOriginH")) >> 16, result.getInteger(sID("rulerOriginV")) >> 16];
+}
+
+function rasterizeAll () {
+	try {
+		executeAction(sID("rasterizeAll"), undefined, DialogModes.NO);
+	} catch (ignored) {}
+}
+
+function rasterizeStyles (layer) {
+	activeDocument.activeLayer = layer;
 	var desc = new ActionDescriptor();
-	desc.putUnitDouble(cID("Wdth"), cID("#Prc"), settings.scale * 100);
-	desc.putBoolean(sID("scaleStyles"), true);
-	desc.putBoolean(cID("CnsP"), true);
-	desc.putEnumerated(cID("Intr"), cID("Intp"), sID("bicubicSharper"));
-	executeAction(cID("ImgS"), desc, DialogModes.NO);
+	var ref = new ActionReference();
+	ref.putEnumerated(cID("Lyr "), cID("Ordn"), cID("Trgt"));
+	desc.putReference(cID("null"), ref);
+	desc.putEnumerated(cID("What"), sID("rasterizeItem"), sID("layerStyle"));
+	executeAction(sID("rasterizeLayer"), desc, DialogModes.NO);
+}
+
+function scaleImage () {
+	var imageSize = activeDocument.width.as("px") * settings.scale;
+	activeDocument.resizeImage(UnitValue(imageSize, "px"), null, null, ResampleMethod.BICUBICSHARPER);
 }
 
 var history;
