@@ -13,7 +13,7 @@ app.bringToFront();
 //     * Neither the name of Esoteric Software nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-var scriptVersion = 4.4; // This is incremented every time the script is modified, so you know if you have the latest.
+var scriptVersion = 4.5; // This is incremented every time the script is modified, so you know if you have the latest.
 
 var cs2 = parseInt(app.version) < 10;
 
@@ -119,7 +119,7 @@ function run () {
 		}
 		var folderPath = folders(layer, "");
 		layer.attachmentName = folderPath + name;
-		layer.attachmentPath = folderPath + (findTagValue(layer, "path") || name);
+		layer.attachmentPath = folderPath + (findTagValue(layer, "path:") || name);
 
 		var bone = null;
 		var boneLayer = findTagLayer(layer, "bone");
@@ -848,6 +848,7 @@ function stripTags (name) {
 
 function findTagLayer (layer, tag) {
 	var groupTag = isValidGroupTag(tag), layerTag = isValidLayerTag(tag);
+	if (endsWith(tag, ":")) tag = tag.slice(0, -1);
 	var re = new RegExp("\\[" + tag + "(:[^\\]]+)?\\]", "i");
 	while (layer) {
 		var group = isGroup(layer);
@@ -860,6 +861,7 @@ function findTagLayer (layer, tag) {
 function findTagValue (layer, tag) {
 	layer = findTagLayer(layer, tag);
 	if (!layer) return null;
+	if (endsWith(tag, ":")) tag = tag.slice(0, -1);
 	var matches = new RegExp("\\[" + tag + ":([^\\]]+)\\]", "i").exec(layer.name);
 	if (matches && matches.length) return trim(matches[1]);
 	return stripTags(layer.name);
