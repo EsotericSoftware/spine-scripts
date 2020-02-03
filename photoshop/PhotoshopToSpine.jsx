@@ -138,16 +138,13 @@ function run () {
 				set(bones, boneName, bone = { name: boneName, parent: parent, children: [] });
 				parent.children.push(bone);
 			}
-			if (layer.wasVisible) {
-				bone.x = (layer.bounds[0].as("px")) * settings.scale - settings.padding;
-				bone.x += (layer.bounds[2].as("px") - layer.bounds[0].as("px")) * settings.scale / 2 + settings.padding;
-				bone.y = (activeDocument.height.as("px") - layer.bounds[1].as("px")) * settings.scale + settings.padding;
-				bone.y -= (layer.bounds[3].as("px") - layer.bounds[1].as("px")) * settings.scale / 2 + settings.padding;
-
-				// Make relative to the Photoshop document ruler origin.
-				bone.x -= xOffSet * settings.scale;
-				bone.y -= (activeDocument.height.as("px") - yOffSet) * settings.scale;
-			}
+			bone.x = layer.bounds[0].as("px") * settings.scale - settings.padding;
+			bone.x += (layer.bounds[2].as("px") - layer.bounds[0].as("px")) * settings.scale / 2 + settings.padding;
+			bone.y = (activeDocument.height.as("px") - layer.bounds[1].as("px")) * settings.scale + settings.padding;
+			bone.y -= (layer.bounds[3].as("px") - layer.bounds[1].as("px")) * settings.scale / 2 + settings.padding;
+			// Make relative to the Photoshop document ruler origin.
+			bone.x -= xOffSet * settings.scale;
+			bone.y -= (activeDocument.height.as("px") - yOffSet) * settings.scale;
 		}
 
 		layer.slotName = findTagValue(layer, "slot") || layer.attachmentName;
