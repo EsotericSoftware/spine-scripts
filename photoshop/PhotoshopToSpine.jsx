@@ -354,6 +354,57 @@ function run () {
 		jsonFile.write(json);
 		jsonFile.close();
 	}
+
+	//TODO: buttons check box
+	//TODO: Mac, linux environement test
+	if('open spine Checked'){
+		function makeBash(){
+			var str = '';
+			for (var i = 0, l = arguments.length;  i < l; i++) {
+				var key = arguments[i];
+				str+=key;
+			}
+			return str;
+		}
+		var Q  = '"' ; //Quote
+		var SQ = '" '; // SpaceQuote for arguments space
+		var spineExe = new File("C:\\Program Files (x86)\\Spine\\Spine.exe");
+		var spineCom = new File("C:\\Program Files (x86)\\Spine\\Spine.com");
+		var projectFile = new File(jsonFile.parent + "/" + name + ".spine");
+	
+		var bashExe = makeBash(
+			'\n',
+			'start ',
+			Q+spineExe.fsName+SQ,
+			Q+projectFile.fsName+SQ,
+			'\n',
+		);
+		var bashCom = makeBash(
+			'\n',
+			'start ',
+			'/W /D ',
+			Q+spineCom.fsName.split('Spine.com')[0]+SQ,
+			'Spine.com ',
+			'-i ',
+			Q+jsonFile.fsName+SQ,
+			'-o ',
+			Q+projectFile.fsName+SQ,
+			'-r ',
+			'\n',
+		);
+	
+		var tempBat = new File(jsonFile.parent+"/temp.bat");
+		tempBat.open("w");   
+		tempBat.write('@echo off');
+		if(!projectFile.exists){
+			tempBat.write(bashCom);
+		}
+		tempBat.write(bashExe);
+		tempBat.write('cmd /k');
+		tempBat.close();
+		tempBat.execute()
+		//tempBat.remove(); // comment this to debug the bash script
+	}
 }
 
 // Settings dialog:
