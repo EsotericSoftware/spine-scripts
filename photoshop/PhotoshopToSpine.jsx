@@ -360,39 +360,40 @@ function run () {
 	if('open spine Checked'){
 		function makeBash(){
 			var str = '';
-			for (var i = 0, l = arguments.length;  i < l; i++) {
-				var key = arguments[i];
-				str+=key;
+			for (var i=0, l=arguments.length;  i<l; i++) {
+				str+=arguments[i];
 			}
 			return str;
 		}
 		var Q  = '"' ; //Quote
 		var SQ = '" '; // SpaceQuote for arguments space
-		var spineExe = new File("C:\\Program Files (x86)\\Spine\\Spine.exe");
-		var spineCom = new File("C:\\Program Files (x86)\\Spine\\Spine.com");
-		var projectFile = new File(jsonFile.parent + "/" + name + ".spine");
-	
+		var spineExe    = new File("C:\\Program Files (x86)\\Spine\\Spine.exe");
+		var spineCom    = new File("C:\\Program Files (x86)\\Spine\\Spine.com");
+		var projectFile = new File(jsonFile.parent + "/"+ name + ".spine"     );
+		
+		// we build command for execute spineExe
 		var bashExe = makeBash(
-			'\n',
-			'start ',
-			Q+spineExe.fsName+SQ,
+			'\n'                   ,
+			'start '               ,
+			Q+spineExe.fsName+SQ   ,
 			Q+projectFile.fsName+SQ,
-			'\n',
+			'\n'                   ,
 		);
+		// we build command for execute bashCom (require if projet not exist)
 		var bashCom = makeBash(
-			'\n',
-			'start ',
-			'/W /D ',
+			'\n'                                      ,
+			'start '                                  ,
+			'/W /D '                                  ,
 			Q+spineCom.fsName.split('Spine.com')[0]+SQ,
-			'Spine.com ',
-			'-i ',
-			Q+jsonFile.fsName+SQ,
-			'-o ',
-			Q+projectFile.fsName+SQ,
-			'-r ',
-			'\n',
+			'Spine.com '                              ,
+			'-i '                                     ,
+			Q+jsonFile.fsName+SQ                      ,
+			'-o '                                     ,
+			Q+projectFile.fsName+SQ                   ,
+			'-r '                                     ,
+			'\n'                                      ,
 		);
-	
+		// we build a temp .bat to execute in os terminal
 		var tempBat = new File(jsonFile.parent+"/temp.bat");
 		tempBat.open("w");   
 		tempBat.write('@echo off');
