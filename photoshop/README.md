@@ -2,11 +2,13 @@
 
 This script supports the latest version of Photoshop CC and all older versions of Photoshop back to CS2.
 
-Please note that Adobe has made [CS2 available for download](https://helpx.adobe.com/creative-suite/kb/cs2-product-downloads.html?promoid=19SCDRQK), though they ask that only those who legitimately purchased CS2 use it.
+An alternative to an expensive Photoshop CC subscription is to use Photoshop Elements, which is a one-time purchase. It is a reduced functionality version of Photoshop intended for photographers, but supports the most often used features (clipping masks, adjusments layers, etc) and may be sufficient for your needs.
+
+Another option is that Adobe has made [CS2 available for download](https://www.google.com/search?q=photoshop%20cs2%20download), though they ask that only those who legitimately purchased CS2 use it.
 
 ## Download
 
-Left click this link: [PhotoshopToSpine.jsx](http://esotericsoftware.com/spine-scripts/PhotoshopToSpine.jsx) to save the script file (do not click the link above, do not right click and save as). Make sure the extension of the file you are saving is `.jsx`. If you use the link in the list of files above, you may mistakenly save a web page.
+To download the script, left click this link: [PhotoshopToSpine.jsx](http://esotericsoftware.com/spine-scripts/PhotoshopToSpine.jsx) (do not right click and "save as", do not click a different link above). Make sure the extension of the file you are saving is `.jsx`. If you use the link in the list of files above, you may mistakenly save a web page.
 
 To see the Spine logo on the dialog, you may optionally click [logo.png](http://esotericsoftware.com/spine-scripts/logo.png) and save the logo image in the same folder as the script file.
 

@@ -13,7 +13,7 @@ app.bringToFront();
 //     * Neither the name of Esoteric Software nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-var scriptVersion = 4.9; // This is incremented every time the script is modified, so you know if you have the latest.
+var scriptVersion = 5.0; // This is incremented every time the script is modified, so you know if you have the latest.
 
 var cs2 = parseInt(app.version) < 10;
 
@@ -92,7 +92,7 @@ function run () {
 	activeDocument.artLayers.add();
 
 	// Store the bones, slot names, and layers for each skin.
-	var bones = { _root: { name: "root", x: 0, y: 0, children: [] } };
+	var bones = { _root: { name: "root", x: 0, y: 0, children: [], layer: activeDocument.layerSets[0].layers[0] } };
 	var slots = {}, slotsCount = 0;
 	var skins = { _default: [] }, skinsCount = 0;
 	var totalLayerCount = 0;
@@ -122,12 +122,12 @@ function run () {
 			if (bone) {
 				if (parent != bone.parent) {
 					error("Multiple layers for the \"" + boneName + "\" bone have different parent bones:\n\n"
-						+ bone.parent.name + "\n"
-						+ parent.name);
+						+ layerPath(bone.layer) + "\n"
+						+ layerPath(boneLayer));
 					continue;
 				}
 			} else {
-				set(bones, boneName, bone = { name: boneName, parent: parent, children: [] });
+				set(bones, boneName, bone = { name: boneName, parent: parent, children: [], layer: boneLayer });
 				parent.children.push(bone);
 			}
 			bone.x = layer.bounds[0].as("px") * settings.scale - settings.padding;
@@ -159,13 +159,16 @@ function run () {
 
 		var skinLayers = get(skinSlots, layer.slotName);
 		if (!skinLayers) set(skinSlots, layer.slotName, skinLayers = []);
-		for (var ii = 0, nn = skinLayers.length; ii < nn; ii++) {
-			if (skinLayers[ii].attachmentName == layer.attachmentName) {
-				error("Multiple layers for the \"" + skinName + "\" skin have the same name:\n\n"
-					+ layer.attachmentName
-					+ "\n\nRename or use the [path:name] or [ignore] tag for these layers.");
-				continue outer;
-			}
+		var duplicates = {};
+		for (var ii = 0, nn = skinLayers.length; ii < nn; ii++)
+			if (skinLayers[ii].attachmentName == layer.attachmentName) duplicates[layerPath(skinLayers[ii])] = true;
+		if (countKeys(duplicates)) {
+			duplicates[layerPath(layer)] = true;
+			error("Multiple layers for the \"" + skinName + "\" skin have the same name"
+				+ (countKeys(duplicates) > 1 ? " \"" + layer.attachmentName + "\"" : "") + ":\n\n"
+				+ joinKeys(duplicates, "\n")
+				+ "\n\nRename or use the [path:name] or [ignore] tag for these layers.");
+			continue outer;
 		}
 		skinLayers[skinLayers.length] = layer;
 		totalLayerCount++;
@@ -258,7 +261,7 @@ function run () {
 		skinName = stripName(skinName);
 		json += '\t"' + skinName + '": {\n';
 
-		var skinSlotIndex = 0, skinSlotsCount = countAssocArray(skinSlots);
+		var skinSlotIndex = 0, skinSlotsCount = countKeys(skinSlots);
 		for (var slotName in skinSlots) {
 			if (!skinSlots.hasOwnProperty(slotName)) continue;
 			var bone = slots[slotName].bone;
@@ -283,7 +286,9 @@ function run () {
 
 				if (isGroup(layer)) {
 					activeDocument.activeLayer = layer;
-					layer = layer.merge();
+					try {
+						layer = layer.merge();
+					} catch (ignored) {}
 				}
 
 				rasterizeStyles(layer);
@@ -863,7 +868,7 @@ function getParentBone (boneLayer, bones) {
 	var parent = get(bones, parentName);
 	if (!parent) { // Parent bone group with no attachment layers.
 		var parentParent = getParentBone(boneLayer.parent, bones);
-		set(bones, parentName, parent = { name: parentName, parent: parentParent, children: [], x: 0, y: 0 });
+		set(bones, parentName, parent = { name: parentName, x: 0, y: 0, parent: parentParent, children: [], layer: boneLayer.parent });
 		parentParent.children.push(parent);
 	}
 	return parent;
@@ -882,6 +887,15 @@ function jsonPath (jsonPath) {
 function folders (layer, path) {
 	var folderLayer = findTagLayer(layer, "folder");
 	return folderLayer ? folders(folderLayer.parent, findTagValue(folderLayer, "folder") + "/" + path) : path;
+}
+
+function layerPath (layer) {
+	var path = layer.name;
+	while (true) {
+		layer = layer.parent
+		if (!layer || layer == activeDocument) return path;
+		path = layer.name + "/" + path;
+	}
 }
 
 function error (message) {
@@ -1005,11 +1019,23 @@ function savePNG (file) {
 
 // JavaScript utility:
 
-function countAssocArray (obj) {
+function countKeys (object) {
 	var count = 0;
-	for (var key in obj)
-		if (obj.hasOwnProperty(key)) count++;
+	for (var key in object)
+		if (object.hasOwnProperty(key)) count++;
 	return count;
+}
+
+function joinKeys (object, glue) {
+	if (!glue) glue = ", ";
+	var value = "";
+	for (var key in object) {
+		if (object.hasOwnProperty(key)) {
+			if (value) value += glue;
+			value += key;
+		}
+	}
+	return value;
 }
 
 function trim (value) {
