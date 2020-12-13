@@ -13,13 +13,13 @@ app.bringToFront();
 //     * Neither the name of Esoteric Software nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-var scriptVersion = 5.2; // This is incremented every time the script is modified, so you know if you have the latest.
+var scriptVersion = 5.3; // This is incremented every time the script is modified, so you know if you have the latest.
 
 var cs2 = parseInt(app.version) < 10;
 
 var originalDoc;
 try {
-	originalDoc = app.activeDocument;
+	originalDoc = activeDocument;
 } catch (ignored) {}
 
 var defaultSettings = {
@@ -53,10 +53,13 @@ function run () {
 	activeDocument.duplicate();
 	deselectLayers();
 
+	// Uncomment this line to enlarge the canvas so layers are not cropped.
+	//activeDocument.revealAll();
+
 	try {
 		convertToRGB();
 	} catch (ignored) {}
-	if (app.activeDocument.mode != DocumentMode.RGB) {
+	if (activeDocument.mode != DocumentMode.RGB) {
 		alert("Please change the image mode to RGB color.");
 		return;
 	}
@@ -579,7 +582,7 @@ function showSettingsDialog () {
 				+ "with \"Debug > Do not break on guarded exceptions\" unchecked.");
 			debugger;
 		} finally {
-			if (activeDocument != originalDoc) activeDocument.close(SaveOptions.DONOTSAVECHANGES);
+			//if (activeDocument != originalDoc) activeDocument.close(SaveOptions.DONOTSAVECHANGES);
 			app.preferences.rulerUnits = rulerUnits;
 			dialog.close();
 		}
