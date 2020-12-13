@@ -79,3 +79,27 @@ The script will recognize the following blending modes applied to a folder or la
 ## Adjustment layers
 
 Adjustment layers can be used in Photoshop and are automatically applied to the generated images, without having to apply or merge them to each layer below them.
+
+## Reveal all
+
+By default all layers are cropped by the canvas size. If you would like to have some layers partially or completely outside the canvas but exported without being cropped, you can edit the script to do so. Find this line of code:
+```
+//activeDocument.revealAll();
+```
+Change it to:
+```
+activeDocument.revealAll();
+```
+Note you will need to repeat this edit if you get a new version of the script.
+
+## Debugging
+
+When the script fails with an error, it can be useful to debug the script to determine which line in the script is failing. A script should never be able to crash Photoshop, no matter what it does, but sometimes Photoshop has bugs and debugging can be used to find which line the in script causes Photoshop to crash.
+
+Debugging requires the [Adobe ExtendScript Toolkit](https://www.adobe.com/products/extendscript-toolkit.htmlESTK). [Older versions](https://www.adobe.com/devnet/scripting/estk.html) are also available. A mirror for version 3.5.0 is available [here](http://esotericsoftware.com/files/AdobeExtendScriptToolkit3.5.0-mul.zip).
+
+Run ExtendScript, then check `Debug > Do not break on guarded exceptions`. That means when a script is run, ExtendScript won't stop when an error occurs that the script handles ("guards"). In a few places it is normal that the script tries something, catches any error that occurs, then carries on, so you don't want ExtendScript stopping every time that happens. ExtendScript will still stop if an error occurs that the script doesn't catch.
+
+Next, with Photoshop running, open the script file in ExtendScript and run the script using `Debug > Run` or `F5`. The script will run as normal, but if an error occurs ExtendScript will stop on the problematic line. Knowing which line causes the script to fail is very useful.
+
+If Photoshop crashes, run the script again but this time use `Debug > Step Into` or `F11` to run line by line. Continue pressing `F11` to run each line and note the last line it was on when Photoshop crashes. Alternatively, `Debug > Step Over` or `F10` can be used to run a whole line without going into the functions called. It can be much faster to execute whole lines like this to get to later in the script where the crash happens.
