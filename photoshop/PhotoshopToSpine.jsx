@@ -13,7 +13,7 @@ app.bringToFront();
 //     * Neither the name of Esoteric Software nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-var scriptVersion = 5.4; // This is incremented every time the script is modified, so you know if you have the latest.
+var scriptVersion = 5.6; // This is incremented every time the script is modified, so you know if you have the latest.
 
 var cs2 = parseInt(app.version) < 10;
 
@@ -281,8 +281,6 @@ function run () {
 				if (cancel) return;
 				setProgress(++layerCount / totalLayerCount, trim(layer.name));
 
-				var placeholderName = layer.attachmentName, attachmentName = placeholderName, attachmentPath = layer.attachmentPath;
-
 				if (isGroup(layer)) {
 					activeDocument.activeLayer = layer;
 					try {
@@ -311,7 +309,7 @@ function run () {
 					if (settings.scale != 1) scaleImage();
 					if (settings.padding > 0) activeDocument.resizeCanvas(width, height, AnchorPosition.MIDDLECENTER);
 
-					var file = new File(imagesDir + attachmentPath + ".png");
+					var file = new File(imagesDir + layer.attachmentPath + ".png");
 					file.parent.create();
 					savePNG(file);
 				}
@@ -331,9 +329,8 @@ function run () {
 					y -= bone.y;
 				}
 
-				json += "\t\t\t" + quote(placeholderName) + ': { ';
-				if (attachmentName != placeholderName) json += '"name": ' + quote(attachmentName) + ', ';
-				if (attachmentName != attachmentPath) json += '"path": ' + quote(attachmentPath) + ', ';
+				json += "\t\t\t" + quote(layer.attachmentName) + ': { ';
+				if (layer.attachmentName != layer.attachmentPath) json += '"path": ' + quote(layer.attachmentPath) + ', ';
 				json += '"x": ' + x + ', "y": ' + y + ', "width": ' + Math.round(width) + ', "height": ' + Math.round(height);
 
 				json += " }" + (++skinLayerIndex < skinLayersCount ? ",\n" : "\n");
