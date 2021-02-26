@@ -65,7 +65,10 @@ Tags in square brackets can be used in layer and group names to customize the ou
 * `[merge]` Layers in the group are merged and a single image is output.
 
 **Layer names:**
-* `[path:name]` Specifies the image file name, which can be different from the attachment name. Whitespace trimming is required. Can be used on a group with `[merge]`.
+* The layer name is used for the attachment or skin placeholder name, relative to any parent `[skin]` or `[folder]` groups. Can contain `/` for subfolders.
+* `[path:name]` Specifies the image file name for the layer, if it needs to be different from the attachment name. Can be used on a group with `[merge]`.
+
+If a layer name, folder name, or path name starts with `/` then parent layers won't affect the name.
 
 ## Blending modes
 

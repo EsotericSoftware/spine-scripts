@@ -13,7 +13,7 @@ app.bringToFront();
 //     * Neither the name of Esoteric Software nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-var scriptVersion = 5.8; // This is incremented every time the script is modified, so you know if you have the latest.
+var scriptVersion = 5.9; // This is incremented every time the script is modified, so you know if you have the latest.
 
 var cs2 = parseInt(app.version) < 10;
 
@@ -98,6 +98,7 @@ function run () {
 	var bones = { _root: { name: "root", x: 0, y: 0, children: [] } };
 	var slots = {}, slotsCount = 0;
 	var skins = { _default: [] }, skinsCount = 0;
+	var paths = {};
 	var totalLayerCount = 0;
 	outer:
 	for (var i = 0; i < layersCount; i++) {
@@ -106,15 +107,30 @@ function run () {
 		if (layer.kind != LayerKind.NORMAL && !isGroup(layer)) continue;
 
 		var name = stripTags(layer.name).replace(/.png$/, "");
-		name = name.replace(/[\\\/:"*?<>|]/g, "").replace(/^\.+$/, "").replace(/^__drag$/, ""); // Illegal.
+		name = name.replace(/[\\:"*?<>|]/g, "").replace(/^\.+$/, "").replace(/^__drag$/, ""); // Illegal.
 		name = name.replace(/^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$/i, ""); // Windows.
 		if (!name || name.length > 255) {
 			error("Layer name is not a valid attachment name:\n\n" + layer.name);
 			continue;
 		}
 		var folderPath = folders(layer, "");
-		layer.attachmentName = folderPath + name;
-		layer.attachmentPath = folderPath + (findTagValue(layer, "path:") || name);
+		if (startsWith(name, "/")) {
+			name = name.substring(1);
+			layer.attachmentName = name;
+		} else
+			layer.attachmentName = folderPath + name;
+
+		layer.attachmentPath = findTagValue(layer, "path:");
+		if (!layer.attachmentPath)
+			layer.attachmentPath = layer.attachmentName;
+		else if (startsWith(layer.attachmentPath, "/"))
+			layer.attachmentPath = layer.attachmentPath.substring(1);
+		else
+			layer.attachmentPath = folderPath + layer.attachmentPath;
+
+		var pathLayers = get(paths, layer.attachmentPath);
+		if (!pathLayers) set(paths, layer.attachmentPath, pathLayers = []);
+		pathLayers[pathLayers.length] = layerPath(layer);
 
 		var bone = null;
 		var boneLayer = findTagLayer(layer, "bone");
@@ -159,22 +175,23 @@ function run () {
 			set(skins, skinName, skinSlots = {});
 			skinsCount++;
 		}
-
 		var skinLayers = get(skinSlots, layer.slotName);
 		if (!skinLayers) set(skinSlots, layer.slotName, skinLayers = []);
-		var duplicates = {};
-		for (var ii = 0, nn = skinLayers.length; ii < nn; ii++)
-			if (skinLayers[ii].attachmentName == layer.attachmentName) duplicates[layerPath(skinLayers[ii])] = true;
-		if (countKeys(duplicates)) {
-			duplicates[layerPath(layer)] = true;
-			error("Multiple layers for the \"" + skinName + "\" skin have the same name"
-				+ (countKeys(duplicates) > 1 ? " \"" + layer.attachmentName + "\"" : "") + ":\n\n"
-				+ joinKeys(duplicates, "\n")
-				+ "\n\nRename or use the [path:name] or [ignore] tag for these layers.");
-			continue outer;
-		}
 		skinLayers[skinLayers.length] = layer;
+
+		layer.placeholderName = skinName == "default" ? layer.attachmentName : name;
+
 		totalLayerCount++;
+	}
+
+	for (var path in paths) {
+		if (!paths.hasOwnProperty(path)) continue;
+		var pathLayers = paths[path];
+		if (pathLayers.length > 1) {
+			error("Multiple layers have the same image file path \"" + path.substring(1) + "\":\n\n"
+				+ joinValues(pathLayers, "\n")
+				+ "\n\nRename or use the [folder], [path:name], or [ignore] tag for these layers.");
+		}
 	}
 
 	var n = errors.length;
@@ -281,7 +298,8 @@ function run () {
 				if (cancel) return;
 				setProgress(++layerCount / totalLayerCount, trim(layer.name));
 
-				var attachmentName = layer.attachmentName, attachmentPath = layer.attachmentPath, isBackgroundLayer = layer.isBackgroundLayer;
+				var attachmentName = layer.attachmentName, attachmentPath = layer.attachmentPath, placeholderName = layer.placeholderName;
+				var isBackgroundLayer = layer.isBackgroundLayer;
 
 				if (isGroup(layer)) {
 					activeDocument.activeLayer = layer;
@@ -331,7 +349,8 @@ function run () {
 					y -= bone.y;
 				}
 
-				json += "\t\t\t" + quote(attachmentName) + ': { ';
+				json += "\t\t\t" + quote(placeholderName) + ': { ';
+				if (attachmentName != placeholderName) json += '"name": ' + quote(attachmentName) + ', ';
 				if (attachmentName != attachmentPath) json += '"path": ' + quote(attachmentPath) + ', ';
 				json += '"x": ' + x + ', "y": ' + y + ', "width": ' + Math.round(width) + ', "height": ' + Math.round(height);
 
@@ -487,7 +506,7 @@ function showSettingsDialog () {
 	// Tooltips.
 	writeTemplateCheckbox.helpTip = "When checked, a PNG is written for the currently visible layers.";
 	writeJsonCheckbox.helpTip = "When checked, a Spine JSON file is written.";
-	trimWhitespaceCheckbox.helpTip = "When checked, blank pixels aroind the edges of each image are removed.";
+	trimWhitespaceCheckbox.helpTip = "When checked, blank pixels around the edges of each image are removed.";
 	scaleSlider.helpTip = "Scales the PNG files. Useful when using higher resolution art in Photoshop than in Spine.";
 	paddingSlider.helpTip = "Blank pixels around the edge of each image. Can avoid aliasing artifacts for opaque pixels along the image edge.";
 	imagesDirText.helpTip = "The folder to write PNGs. Begin with \"./\" to be relative to the PSD file. Blank to disable writing PNGs.";
@@ -581,7 +600,7 @@ function showSettingsDialog () {
 				+ "with \"Debug > Do not break on guarded exceptions\" unchecked.");
 			debugger;
 		} finally {
-			//if (activeDocument != originalDoc) activeDocument.close(SaveOptions.DONOTSAVECHANGES);
+			if (activeDocument != originalDoc) activeDocument.close(SaveOptions.DONOTSAVECHANGES);
 			app.preferences.rulerUnits = rulerUnits;
 			dialog.close();
 		}
@@ -655,7 +674,10 @@ function showHelpDialog () {
 		+ "•  [merge]  Layers in the group are merged and a single image is output.\n"
 		+ "\n"
 		+ "Layer names:\n"
-		+ "•  [path:name]  Specifies the image file name, which can be different from the attachment name. Whitespace trimming is required. Can be used on a group with [merge]."
+		+ "•  The layer name is used for the attachment or skin placeholder name, relative to any parent [skin] or [folder] groups. Can contain / for subfolders.\n"
+		+ "•  [path:name]  Specifies the image file name, if it needs to be different from the attachment name. Can be used on a group with [merge].\n"
+		+ "\n"
+		+ "If a layer name, folder name, or path name starts with / then parent layers won't affect the name."
 	, {multiline: true});
 	helpText.preferredSize.width = 325;
 
@@ -770,12 +792,6 @@ function collectLayers (parent, collect) {
 			}
 		}
 
-		// Path is only valid if trimming whitespace.
-		if (!settings.trimWhitespace && layer.name.search(/\[path:[^\]]+\]/i, "") != -1) {
-			error("The [path:name] tag requires whitespace trimming to be enabled:\n" + layer.name);
-			continue outer;
-		}
-
 		var changeVisibility = layer.kind == LayerKind.NORMAL || group;
 		if (changeVisibility) {
 			layer.wasVisible = layer.visible;
@@ -885,13 +901,12 @@ function jsonPath (jsonPath) {
 function folders (layer, path) {
 	var re = new RegExp("\\[(folder|skin)(:[^\\]]+)?\\]", "i");
 	while (layer) {
-		if (isGroup(layer)) {
-			var matches = re.exec(layer.name);
-			if (matches) {
-				var folder = findTagValue(layer, matches[1]);
-				if (matches[1] == "skin" && folder == "default") return folders(layer.parent, path);
-				return folders(layer.parent, folder + "/" + path);
-			}
+		var matches = re.exec(layer.name);
+		if (matches) {
+			var folder = findTagValue(layer, matches[1]);
+			if (matches[1] == "skin" && folder == "default") return folders(layer.parent, path);
+			if (startsWith(folder, "/")) return folder + "/" + path;
+			return folders(layer.parent, folder + "/" + path);
 		}
 		layer = layer.parent;
 	}
@@ -1043,6 +1058,18 @@ function joinKeys (object, glue) {
 		if (object.hasOwnProperty(key)) {
 			if (value) value += glue;
 			value += key;
+		}
+	}
+	return value;
+}
+
+function joinValues (object, glue) {
+	if (!glue) glue = ", ";
+	var value = "";
+	for (var key in object) {
+		if (object.hasOwnProperty(key)) {
+			if (value) value += glue;
+			value += object[key];
 		}
 	}
 	return value;
