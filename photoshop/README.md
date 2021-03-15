@@ -8,9 +8,9 @@ Another option is that Adobe has made [CS2 available for download](https://www.g
 
 ## Download
 
-To download the script, left click this link: [PhotoshopToSpine.jsx](http://esotericsoftware.com/spine-scripts/PhotoshopToSpine.jsx) (do not right click and "save as", do not click a different link above). Make sure the extension of the file you are saving is `.jsx`. If you use the link in the list of files above, you may mistakenly save a web page.
+To download the script, left click this link: [PhotoshopToSpine.jsx](https://esotericsoftware.com/spine-scripts/PhotoshopToSpine.jsx) (do not right click and "save as", do not click a different link above). Make sure the extension of the file you are saving is `.jsx`. If you use the link in the list of files above, you may mistakenly save a web page.
 
-To see the Spine logo on the dialog, you may optionally click [logo.png](http://esotericsoftware.com/spine-scripts/logo.png) and save the logo image in the same folder as the script file.
+To see the Spine logo on the dialog, you may optionally click [logo.png](https://esotericsoftware.com/spine-scripts/logo.png) and save the logo image in the same folder as the script file.
 
 ## Install
 
@@ -99,7 +99,7 @@ Note you will need to repeat this edit if you get a new version of the script.
 
 When the script fails with an error, it can be useful to debug the script to determine which line in the script is failing. A script should never be able to crash Photoshop, no matter what it does, but sometimes Photoshop has bugs and debugging can be used to find which line the in script causes Photoshop to crash.
 
-Debugging requires the [Adobe ExtendScript Toolkit](https://www.adobe.com/products/extendscript-toolkit.htmlESTK). [Older versions](https://www.adobe.com/devnet/scripting/estk.html) are also available. A mirror for version 3.5.0 is available [here](http://esotericsoftware.com/files/AdobeExtendScriptToolkit3.5.0-mul.zip).
+Debugging requires the [Adobe ExtendScript Toolkit](https://www.adobe.com/products/extendscript-toolkit.htmlESTK). [Older versions](https://www.adobe.com/devnet/scripting/estk.html) are also available. A mirror for version 3.5.0 is available [here](https://esotericsoftware.com/files/AdobeExtendScriptToolkit3.5.0-mul.zip).
 
 Run ExtendScript, then check `Debug > Do not break on guarded exceptions`. That means when a script is run, ExtendScript won't stop when an error occurs that the script handles ("guards"). In a few places it is normal that the script tries something, catches any error that occurs, then carries on, so you don't want ExtendScript stopping every time that happens. ExtendScript will still stop if an error occurs that the script doesn't catch.
 
