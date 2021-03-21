@@ -29,4 +29,5 @@ A new Keyboard Shortcut can be set under the `Edit` menu. Just search for Spine 
 Tags in square brackets can be used in layer and group names to customize the output. The tags can be anywhere in the name.
 
 **Group and layer names:**
+
 * `[ignore]` Layers, groups, and any child groups will not be output.

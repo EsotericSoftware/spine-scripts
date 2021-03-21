@@ -74,7 +74,6 @@ def process_layer(img, layer, slots, attachments):
     else:
         layer_name = layer.name
 
-
         slots.insert(0, {
             'name': layer_name,
             'bone': 'root',
