@@ -58,6 +58,9 @@ def process_layer(img, layer, slots, attachments):
     else:
         layer_name = layer.name
 
+        if '[ignore]' in layer_name:
+            return processed
+
         slots.insert(0, {
             'name': layer_name,
             'bone': 'root',
