@@ -20,3 +20,13 @@
 After installation, choose `Export to Spine` under the `File` menu.
 
 ![](http://n4te.com/x/255-qhgh.png)
+
+It can be helpful to create a Gimp Keyboard Shortcut that runs the script. A function key can be specified for the action, allowing the script to be run with a single key press.
+A new Keyboard Shortcut can be set under the `Edit` menu. Just search for Spine in the Keyboard Shortcut window.
+
+## Tags
+
+Tags in square brackets can be used in layer and group names to customize the output. The tags can be anywhere in the name.
+
+**Group and layer names:**
+* `[ignore]` Layers, groups, and any child groups will not be output.
