@@ -19,7 +19,7 @@ import os.path
 import gimpfu
 from gimp import pdb
 
-def spine_export(img, active_layer, compression, dir_name):
+def spine_export(img, active_layer, compression, dir_name, crop_layers):
     ''' Plugin entry point
     '''
 
@@ -36,9 +36,25 @@ def spine_export(img, active_layer, compression, dir_name):
     # Iterate through the layers, extracting their info into the JSON output
     # and saving the layers as individual images
     for layer in img.layers:
+        if '[ignore]' in layer.name:
+            continue
+
         if layer.visible:
+            if crop_layers:
+                img.active_layer = layer
+                width = layer.width
+                height = layer.height
+                x, y = layer.offsets
+                pdb.plug_in_autocrop_layer(img, layer)
+
             to_save = process_layer(img, layer, slots, attachments)
             save_layers(img, to_save, compression, dir_name)
+
+            if crop_layers:
+                img.active_layer = layer
+                x_new, y_new = layer.offsets
+                layer.resize(width, height, - x + x_new, - y + y_new)
+
 
     # Write the JSON output
     name = os.path.splitext(os.path.basename(img.filename))[0]
@@ -133,7 +149,8 @@ gimpfu.register(
     # params
     [
         (gimpfu.PF_ADJUSTMENT, "compression", "PNG Compression level:", 9, (0, 9, 1)),
-        (gimpfu.PF_DIRNAME, "dir", "Directory", "/tmp")
+        (gimpfu.PF_DIRNAME, "dir", "Directory", "/tmp"),
+        (gimpfu.PF_TOGGLE, "crop_layers", "Crop", 1),
     ],
     # results
     [],
