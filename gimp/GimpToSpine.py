@@ -40,7 +40,7 @@ def spine_export(img, active_layer, compression, dir_name, crop_layers):
             continue
 
         if layer.visible:
-            if crop_layers:
+            if crop_layers and layer.type == 0:
                 img.active_layer = layer
                 width = layer.width
                 height = layer.height
@@ -50,7 +50,7 @@ def spine_export(img, active_layer, compression, dir_name, crop_layers):
             to_save = process_layer(img, layer, slots, attachments)
             save_layers(img, to_save, compression, dir_name)
 
-            if crop_layers:
+            if crop_layers and layer.type == 0:
                 img.active_layer = layer
                 x_new, y_new = layer.offsets
                 layer.resize(width, height, - x + x_new, - y + y_new)
