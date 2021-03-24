@@ -55,9 +55,11 @@ def spine_export(img, active_layer, compression, dir_name, crop_layers):
                 x_new, y_new = layer.offsets
                 layer.resize(width, height, - x + x_new, - y + y_new)
 
-
     # Write the JSON output
+    try:
     name = os.path.splitext(os.path.basename(img.filename))[0]
+    except Exception:
+        name = "not_saved"
     with open(os.path.join(dir_name, '%s.json' % name), 'w') as json_file:
         json.dump(output, json_file)
 
