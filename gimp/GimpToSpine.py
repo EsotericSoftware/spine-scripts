@@ -23,6 +23,8 @@ def spine_export(img, active_layer, compression, dir_name, crop_layers):
     ''' Plugin entry point
     '''
 
+    to_delete = []
+
     # Set up the initial JSON format
     output = {
         'bones': [{'name': 'root'}],
@@ -32,6 +34,15 @@ def spine_export(img, active_layer, compression, dir_name, crop_layers):
     }
     slots = output['slots']
     attachments = output['skins']['default']
+
+    # Merge layers
+    for layer in img.layers:
+        if '[merge]' in layer.name and layer.type == 1:
+            layer_copy = pdb.gimp_layer_copy(layer, False)
+            layer_copy.name = "[ignore]" + layer.name
+            img.add_layer(layer_copy, 0)
+            temp_layer = pdb.gimp_image_merge_layer_group(img, layer)
+            to_delete.append(temp_layer)
 
     # Iterate through the layers, extracting their info into the JSON output
     # and saving the layers as individual images
@@ -54,6 +65,14 @@ def spine_export(img, active_layer, compression, dir_name, crop_layers):
                 img.active_layer = layer
                 x_new, y_new = layer.offsets
                 layer.resize(width, height, - x + x_new, - y + y_new)
+
+    # Undo merge layers
+    for layer in to_delete:
+        img.remove_layer(layer)
+
+    for layer in img.layers:
+        if '[ignore][merge]' in layer.name and layer.type == 1:
+            layer.name = layer.name.replace('[ignore][merge]', '[merge]')
 
     # Write the JSON output
     try:
