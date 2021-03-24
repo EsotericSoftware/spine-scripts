@@ -17,32 +17,56 @@ import math
 import os.path
 
 import gimpfu
-from gimp import pdb
+from gimp import pdb, GroupLayer, Layer
+
+to_delete = []
+
+
+def merge_layers(layer):
+
+    if '[merge]' in layer.name and type(layer) == GroupLayer:
+        layer_copy = pdb.gimp_layer_copy(layer, False)
+        layer_copy.name = "[ignore]" + layer.name
+        index = 0
+        for i in layer.parent.children:
+            if i.name == layer.name:
+                break
+            index += 1
+        pdb.gimp_image_insert_layer(layer.image, layer_copy, layer.parent, index)
+        temp_layer = pdb.gimp_image_merge_layer_group(layer.image, layer)
+        to_delete.append(temp_layer)
+    elif hasattr(layer, 'layers'):
+        for sublayer in layer.layers:
+            merge_layers(sublayer.image, sublayer)
+
+
+def rename_merged_layers(layer):
+    if hasattr(layer, 'layers'):
+        if '[ignore][merge]' in layer.name and type(layer) == GroupLayer:
+            layer.name = layer.name.replace('[ignore][merge]', '[merge]')
+        for sublayer in layer.layers:
+            rename_merged_layers(sublayer)
+    else:
+        if '[ignore][merge]' in layer.name and type(layer) == GroupLayer:
+            layer.name = layer.name.replace('[ignore][merge]', '[merge]')
+
 
 def spine_export(img, active_layer, compression, dir_name, crop_layers):
     ''' Plugin entry point
     '''
-
-    to_delete = []
 
     # Set up the initial JSON format
     output = {
         'bones': [{'name': 'root'}],
         'slots': [],
         'skins': {'default': {}},
-        'animations': {}
+        'animations': {},
     }
     slots = output['slots']
     attachments = output['skins']['default']
 
-    # Merge layers
     for layer in img.layers:
-        if '[merge]' in layer.name and layer.type == 1:
-            layer_copy = pdb.gimp_layer_copy(layer, False)
-            layer_copy.name = "[ignore]" + layer.name
-            img.add_layer(layer_copy, 0)
-            temp_layer = pdb.gimp_image_merge_layer_group(img, layer)
-            to_delete.append(temp_layer)
+        merge_layers(layer)
 
     # Iterate through the layers, extracting their info into the JSON output
     # and saving the layers as individual images
@@ -50,8 +74,8 @@ def spine_export(img, active_layer, compression, dir_name, crop_layers):
         if '[ignore]' in layer.name:
             continue
 
-        if layer.visible:
-            if crop_layers and layer.type == 0:
+        if layer.visible and not type(layer) == GroupLayer:
+            if crop_layers and type(layer) == Layer:
                 img.active_layer = layer
                 width = layer.width
                 height = layer.height
@@ -61,7 +85,7 @@ def spine_export(img, active_layer, compression, dir_name, crop_layers):
             to_save = process_layer(img, layer, slots, attachments)
             save_layers(img, to_save, compression, dir_name)
 
-            if crop_layers and layer.type == 0:
+            if crop_layers and type(layer) == Layer:
                 img.active_layer = layer
                 x_new, y_new = layer.offsets
                 layer.resize(width, height, - x + x_new, - y + y_new)
@@ -71,8 +95,7 @@ def spine_export(img, active_layer, compression, dir_name, crop_layers):
         img.remove_layer(layer)
 
     for layer in img.layers:
-        if '[ignore][merge]' in layer.name and layer.type == 1:
-            layer.name = layer.name.replace('[ignore][merge]', '[merge]')
+        rename_merged_layers(layer)
 
     # Write the JSON output
     try:
@@ -81,6 +104,7 @@ def spine_export(img, active_layer, compression, dir_name, crop_layers):
         name = "not_saved"
     with open(os.path.join(dir_name, '%s.json' % name), 'w') as json_file:
         json.dump(output, json_file)
+
 
 def process_layer(img, layer, slots, attachments):
     ''' Extracts the Spine info from each layer, recursing as necessary on
@@ -123,6 +147,7 @@ def process_layer(img, layer, slots, attachments):
 
     return processed
 
+
 def save_layers(img, layers, compression, dir_name):
     ''' Takes a list of layers and saves them in `dir_name` as PNGs,
         naming the files after their layer names.
@@ -141,14 +166,15 @@ def save_layers(img, layers, compression, dir_name):
             tmp_img.layers[0],
             fullpath,
             filename,
-            0, # interlace
-            compression, # compression
-            1, # bkgd
-            1, # gama
-            1, # offs
-            1, # phys
-            1 # time
+            0,  # interlace
+            compression,  # compression
+            1,  # bkgd
+            1,  # gama
+            1,  # offs
+            1,  # phys
+            1  # time
         )
+
 
 gimpfu.register(
     # name
