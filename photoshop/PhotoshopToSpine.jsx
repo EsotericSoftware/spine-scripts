@@ -13,7 +13,7 @@ app.bringToFront();
 //     * Neither the name of Esoteric Software nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-var scriptVersion = 6.2; // This is incremented every time the script is modified, so you know if you have the latest.
+var scriptVersion = 6.3; // This is incremented every time the script is modified, so you know if you have the latest.
 
 var cs2 = parseInt(app.version) < 10;
 
@@ -98,7 +98,7 @@ function run () {
 	var bones = { _root: { name: "root", x: 0, y: 0, children: [] } };
 	var slots = {}, slotsCount = 0;
 	var skins = { _default: [] }, skinsCount = 0;
-	var paths = {};
+	var skinDuplicates = {};
 	var totalLayerCount = 0;
 	outer:
 	for (var i = 0; i < layersCount; i++) {
@@ -128,10 +128,6 @@ function run () {
 		else
 			layer.attachmentPath = folderPath + layer.attachmentPath;
 
-		var pathLayers = get(paths, layer.attachmentPath);
-		if (!pathLayers) set(paths, layer.attachmentPath, pathLayers = []);
-		pathLayers[pathLayers.length] = layerPath(layer);
-
 		var bone = null;
 		var boneLayer = findTagLayer(layer, "bone");
 		if (boneLayer) {
@@ -159,12 +155,15 @@ function run () {
 		}
 
 		var skinName = findTagValue(layer, "skin") || "default";
+		layer.skinName = skinName;
 		layer.placeholderName = skinName == "default" ? layer.attachmentName : name;
 
 		layer.slotName = findTagValue(layer, "slot") || name;
-		if (!get(slots, layer.slotName)) slotsCount++;
-		var slot;
-		set(slots, layer.slotName, slot = { bone: bone, attachment: layer.wasVisible ? layer.placeholderName : null });
+		var slot = get(slots, layer.slotName);
+		if (!slot) {
+			slotsCount++;
+			set(slots, layer.slotName, slot = { bone: bone, attachment: layer.wasVisible ? layer.placeholderName : null, placeholders: {} });
+		}
 		if (layer.blendMode == BlendMode.LINEARDODGE)
 			slot.blend = "additive";
 		else if (layer.blendMode == BlendMode.MULTIPLY)
@@ -172,26 +171,74 @@ function run () {
 		else if (layer.blendMode == BlendMode.SCREEN)
 			slot.blend = "screen";
 
+		var placeholders = get(slot.placeholders, skinName);
+		if (!placeholders)
+			set(slot.placeholders, skinName, placeholders = {});
+		else {
+			var existing = get(placeholders, layer.placeholderName);
+			if (existing) { // Skin has duplicate placeholders.
+				var key = layer.slotName + "|^`" + skinName;
+				remove(skinDuplicates, key, existing);
+				add(skinDuplicates, key, existing);
+				add(skinDuplicates, key, layer);
+			}
+		}
+		set(placeholders, layer.placeholderName, layer);
+
 		var skinSlots = get(skins, skinName);
 		if (!skinSlots) {
 			set(skins, skinName, skinSlots = {});
 			skinsCount++;
 		}
-		var skinLayers = get(skinSlots, layer.slotName);
-		if (!skinLayers) set(skinSlots, layer.slotName, skinLayers = []);
-		skinLayers[skinLayers.length] = layer;
+		add(skinSlots, layer.slotName, layer);
 
 		totalLayerCount++;
 	}
 
-	for (var path in paths) {
-		if (!paths.hasOwnProperty(path)) continue;
-		var pathLayers = paths[path];
-		if (pathLayers.length > 1) {
-			error("Multiple layers have the same image file path \"" + path.substring(1) + "\":\n\n"
-				+ joinValues(pathLayers, "\n")
-				+ "\n\nRename or use the [folder], [path:name], or [ignore] tag for these layers.");
+	// Error if a skin has multiple skin placeholders with the same name.
+	for (var key in skinDuplicates) {
+		if (!skinDuplicates.hasOwnProperty(key)) continue;
+		var layers = skinDuplicates[key];
+		var message = "Multiple layers for the \"" + layers[0].skinName + "\" skin in the \"" + layers[0].slotName
+			+ "\" slot have the same name \"" + layers[0].placeholderName + "\":\n";
+		for (var i = 0, n = layers.length; i < n; i++)
+			message += "\n" + layerPath(layers[i]);
+		error(message + "\n\nRename or use the [ignore] tag for these layers.");
+	}
+
+	// Error if a skin placeholder has the same name as a default skin attachment.
+	var slotDuplicates = {};
+	for (var slotName in slots) {
+		if (!slots.hasOwnProperty(slotName)) continue;
+		var slot = slots[slotName];
+
+		var defaultPlaceholders = get(slot.placeholders, "default");
+		if (!defaultPlaceholders) continue;
+		for (var skinName in slot.placeholders) {
+			if (!slot.placeholders.hasOwnProperty(skinName)) continue;
+			var placeholders = slot.placeholders[skinName];
+			if (stripName(skinName) == "default") continue;
+
+			for (var placeholderName in placeholders) {
+				if (!placeholders.hasOwnProperty(placeholderName)) continue;
+
+				var existing = get(defaultPlaceholders, stripName(placeholderName));
+				if (existing) {
+					var layer = placeholders[placeholderName];
+					remove(slotDuplicates, layer.slotName, existing);
+					add(slotDuplicates, layer.slotName, existing);
+					add(slotDuplicates, layer.slotName, layer);
+				}
+			}
 		}
+	}
+	for (var slotName in slotDuplicates) {
+		if (!slotDuplicates.hasOwnProperty(slotName)) continue;
+		var layers = slotDuplicates[slotName];
+		var message = "Multiple layers for the \"" + layers[0].slotName + "\" slot have the same name \"" + layers[0].placeholderName + "\":\n";
+		for (var i = 0, n = layers.length; i < n; i++)
+			message += "\n" + layerPath(layers[i]);
+		error(message + "\n\nRename or use the [ignore] tag for these layers.");
 	}
 
 	var n = errors.length;
@@ -934,6 +981,22 @@ function get (object, name) {
 }
 function set (object, name, value) {
 	object["_" + name] = value;
+}
+function add (object, name, value) {
+	var array = object["_" + name];
+	if (!array) object["_" + name] = array = [];
+	array[array.length] = value;
+	return array;
+}
+function remove (object, name, value) {
+	var array = object["_" + name];
+	if (!array) return;
+	for (var i = 0; i < n; i++) {
+		if (array[i] == value) {
+			array.splice(i, 1);
+			return;
+		}
+	}
 }
 function stripName (name) {
 	return name.substring(1);
