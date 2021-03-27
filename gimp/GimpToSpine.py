@@ -24,20 +24,22 @@ to_delete = []
 
 def merge_layers(layer):
 
-    if '[merge]' in layer.name and type(layer) == GroupLayer:
+    if '[merge]' in layer.name and '[ignore]' not in layer.name and type(layer) == GroupLayer:
         layer_copy = pdb.gimp_layer_copy(layer, False)
         layer_copy.name = "[ignore]" + layer.name
         index = 0
+        if layer.parent:
         for i in layer.parent.children:
             if i.name == layer.name:
                 break
             index += 1
+        layer.name = layer.name.replace('[merge]', '').strip()
         pdb.gimp_image_insert_layer(layer.image, layer_copy, layer.parent, index)
         temp_layer = pdb.gimp_image_merge_layer_group(layer.image, layer)
         to_delete.append(temp_layer)
     elif hasattr(layer, 'layers'):
         for sublayer in layer.layers:
-            merge_layers(sublayer.image, sublayer)
+            merge_layers(sublayer)
 
 
 def rename_merged_layers(layer):
@@ -104,6 +106,7 @@ def spine_export(img, active_layer, compression, dir_name, crop_layers):
         name = "not_saved"
     with open(os.path.join(dir_name, '%s.json' % name), 'w') as json_file:
         json.dump(output, json_file)
+    return output
 
 
 def process_layer(img, layer, slots, attachments):
