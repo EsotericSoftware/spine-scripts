@@ -817,7 +817,7 @@ function collectLayers (parent, collect) {
 		while (true) {
 			var matches = re.exec(layer.name);
 			if (!matches) break;
-			var tag = matches[1].toLowerCase();
+			var tag = matches[1];
 			if (group) {
 				if (!isValidGroupTag(tag)) {
 					var message = "Invalid group name:\n\n" + layer.name;
