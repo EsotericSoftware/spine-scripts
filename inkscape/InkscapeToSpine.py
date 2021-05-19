@@ -257,16 +257,15 @@ class SpineExporter(inkex.Effect):
 
 			command = (
 				"inkscape",
-				"--export-png", outfile,
+				self.options.input_file,
+				"--export-filename", outfile,
 				"--export-id-only",
 				"--export-id", id,
 				"--export-dpi", str(self.options.dpi),
-				"--file", self.options.input_file,
 			)
 
-			process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-			process.wait()
-
+			with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE) as process:
+				process.wait()
 			bbox = self.get_bounding_box(id)
 			self.merge_spine_skin(spine_struct, label, bbox)
 			# Slot merge must come after the skin merge because we need the
