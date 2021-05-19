@@ -121,7 +121,7 @@ class SpineExporter(inkex.Effect):
 		p = run_inkscape(["--shell"])
 		stdin = []
 		for k in ("x", "y", "width", "height"):
-			stdin.append("--file=%r --query-id=%s --query-%s " % (self.svg_file, id, k)) # line 124
+			stdin.append("--file=%r --query-id=%s --query-%s " % (self.options.input_file, id, k)) # line 124
 		stdin.append("")  # For the last command
 		stdout, stderr = p.communicate("\n".join(stdin))
 		# Remove the "Inkscape interactive shell mode" noise
@@ -258,7 +258,7 @@ class SpineExporter(inkex.Effect):
 				"--export-id-only",
 				"--export-id", id,
 				"--export-dpi", str(self.options.dpi),
-				"--file", self.args[-1],
+				"--file", self.options.input_file,
 			)
 
 			process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -283,4 +283,4 @@ class SpineExporter(inkex.Effect):
 
 inkex.localization.localize()
 effect = SpineExporter()
-effect.affect()
+effect.run()
