@@ -49,8 +49,8 @@ class path2spine(inkex.Effect):
 		self.own_slot = self.options.own_slot
 		self.selected_only = self.options.selected_only
 		self.corner_type = self.options.corner_type
-		self.hw = self.unittouu(self.getDocumentWidth()) / 2
-		self.hh = self.unittouu(self.getDocumentHeight()) / 2
+		self.hw = self.svg.unittouu(self.svg.width) / 2
+		self.hh = self.svg.unittouu(self.svg.height) / 2
 
 		if not self.own_slot:
 			data["slots"].append({"name": "paths", "bone": "root"})
@@ -296,7 +296,7 @@ class path2spine(inkex.Effect):
 
 	def _main_function(self):
 		if self.selected_only:
-			for id, node in self.selected.iteritems():
+			for id, node in self.svg.selected.iteritems():
 				self.traverse(node, [], [])
 		else:
 			for node in self.document.getroot().iterchildren():
@@ -305,4 +305,4 @@ class path2spine(inkex.Effect):
 		self.save(self.filename)
 
 e = path2spine()
-e.affect()
+e.run()
