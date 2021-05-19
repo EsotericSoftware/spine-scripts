@@ -281,6 +281,6 @@ class SpineExporter(inkex.Effect):
 				json.dump(spine_struct, f, **args)
 
 
-inkex.localize()
+inkex.localization.localize()
 effect = SpineExporter()
 effect.affect()
