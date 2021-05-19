@@ -27,7 +27,6 @@ THE SOFTWARE.
 '''
 
 import os, inkex, simplestyle, simpletransform, simplepath, cubicsuperpath, json
-from string import rstrip
 from math import sqrt
 
 data = {
@@ -247,7 +246,7 @@ class path2spine(inkex.Effect):
 		subpaths = path.split('M')
 
 		for i in range(1, len(subpaths)):
-			subpaths[i] = 'M ' + rstrip(subpaths[i])
+			subpaths[i] = 'M ' + str.rstrip(subpaths[i])
 			closed = subpaths[i][-1] in ['Z', 'z']
 
 			csp = cubicsuperpath.parsePath(subpaths[i])
