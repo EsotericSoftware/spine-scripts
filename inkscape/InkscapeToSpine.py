@@ -38,44 +38,44 @@ def parse_css_style(style):
 class SpineExporter(inkex.Effect):
 	def __init__(self):
 		inkex.Effect.__init__(self)
-		self.OptionParser.add_option(
+		self.arg_parser.add_argument(
 			"--outdir",
 			action="store",
-			type="string",
+			type=str,
 			dest="outdir",
 			default="~",
 			help="Path to the export directory"
 		)
-		self.OptionParser.add_option(
+		self.arg_parser.add_argument(
 			"--dpi",
 			action="store",
-			type="float",
+			type=float,
 			dest="dpi",
 			default=90.0,
 			help="Resolution to export at"
 		)
-		self.OptionParser.add_option(
+		self.arg_parser.add_argument(
 			"--json",
-			type="inkbool",
+			type=inkex.Boolean,
 			dest="json",
 			help="Create a Spine JSON file",
 		)
-		self.OptionParser.add_option(
+		self.arg_parser.add_argument(
 			"--ignore-hidden",
-			type="inkbool",
+			type=inkex.Boolean,
 			dest="ignore_hidden",
 			help="Ignore hidden layers",
 		)
-		self.OptionParser.add_option(
+		self.arg_parser.add_argument(
 			"--pretty-print",
-			type="inkbool",
+			type=inkex.Boolean,
 			dest="pretty",
 			help="Pretty-print the JSON file",
 		)
-		self.OptionParser.add_option(
+		self.arg_parser.add_argument(
 			"--merge",
 			action="store",
-			type="string",
+			type=str,
 			dest="merge",
 			default="",
 			help="Spine JSON file to merge with"
