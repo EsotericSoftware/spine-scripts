@@ -39,10 +39,10 @@ data = {
 class path2spine(inkex.Effect):
 	def __init__(self):
 		inkex.Effect.__init__(self)
-		self.OptionParser.add_option("-f", "--filename", action = "store", type = "string", dest = "filename", default = "~/paths.json", help = "File to export")
-		self.OptionParser.add_option("-o", "--own_slot", action = "store", type = "inkbool", dest = "own_slot", default = True, help = "Export each path in its own slot")
-		self.OptionParser.add_option("-s", "--selected_only", action = "store", type = "inkbool", dest = "selected_only", default = True, help = "Export only selected paths")
-		self.OptionParser.add_option("-c", "--corner_type", action = "store", type = "string", dest = "corner_type", default = "curve", help = "Corner type for open paths")
+		self.arg_parser.add_argument("-f", "--filename", action = "store", type = str, dest = "filename", default = "~/paths.json", help = "File to export")
+		self.arg_parser.add_argument("-o", "--own_slot", action = "store", type = inkex.Boolean, dest = "own_slot", default = True, help = "Export each path in its own slot")
+		self.arg_parser.add_argument("-s", "--selected_only", action = "store", type = inkex.Boolean, dest = "selected_only", default = True, help = "Export only selected paths")
+		self.arg_parser.add_argument("-c", "--corner_type", action = "store", type = str, dest = "corner_type", default = "curve", help = "Corner type for open paths")
 
 	def effect(self):
 		self.filename = self.options.filename
