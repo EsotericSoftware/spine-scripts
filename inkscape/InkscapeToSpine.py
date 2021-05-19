@@ -118,17 +118,20 @@ class SpineExporter(inkex.Effect):
 		return width, height
 
 	def get_bounding_box(self, id):
-		p = run_inkscape(["--shell"])
-		stdin = []
-		for k in ("x", "y", "width", "height"):
-			stdin.append("--file=%r --query-id=%s --query-%s " % (self.options.input_file, id, k)) # line 124
-		stdin.append("")  # For the last command
-		stdout, stderr = p.communicate("\n".join(stdin))
-		# Remove the "Inkscape interactive shell mode" noise
-		stdout = stdout[stdout.index("\n>") + 1:]
-		# inkex.debug(stdout)
-		x, y, width, height = stdout.split(">")[1:-1]
-		return float(x), float(y), float(width), float(height)
+		with run_inkscape(["--shell"]) as p:
+			stdin = []
+			stdin.append("file-open:%s; select-by-id:%s; query-x; query-y; query-width; query-height; file-close" % (self.options.input_file, id))
+			stdin.append("")  # For the last command
+			stdout, stderr = p.communicate(str.encode("\n".join(stdin)))
+
+			# Decode to strings
+			stdout = stdout.decode("utf-8")
+			stderr = stderr.decode("utf-8")
+			# Remove the "Inkscape interactive shell mode" noise
+			stdout = stdout[stdout.index(">") + 1:]
+			# inkex.utils.debug(stdout)
+			x, y, width, height = stdout.split("\n")[0:-1]
+			return float(x), float(y), float(width), float(height)
 
 	def autocrop_in_place(self, path):
 		from PIL import Image
