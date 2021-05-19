@@ -86,15 +86,15 @@ class SpineExporter(inkex.Effect):
 		self.bone_coords = {}
 
 	@property
-	def svg(self):
+	def root(self):
 		return self.document.getroot()
 
 	@property
 	def friendly_name(self):
-		docname = self.svg.xpath("//@sodipodi:docname", namespaces=inkex.NSS)
+		docname = self.root.xpath("//@sodipodi:docname", namespaces=inkex.NSS)
 		if docname:
 			return docname[0].replace(".svg", "")
-		return self.svg.attrib["id"]
+		return self.root.attrib["id"]
 
 	@property
 	def layers(self):
@@ -110,11 +110,11 @@ class SpineExporter(inkex.Effect):
 				ret.append(e)
 			return ret
 
-		return get_layers(self.svg)
+		return get_layers(self.root)
 
 	@property
 	def drawing_size(self):
-		x, y, width, height = self.get_bounding_box(self.svg.attrib["id"])
+		x, y, width, height = self.get_bounding_box(self.root.attrib["id"])
 		return width, height
 
 	def get_bounding_box(self, id):
