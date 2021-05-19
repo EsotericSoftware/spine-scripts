@@ -296,7 +296,7 @@ class path2spine(inkex.Effect):
 
 	def _main_function(self):
 		if self.selected_only:
-			for id, node in self.svg.selected.iteritems():
+			for id, node in self.svg.selection.items():
 				self.traverse(node, [], [])
 		else:
 			for node in self.document.getroot().iterchildren():
