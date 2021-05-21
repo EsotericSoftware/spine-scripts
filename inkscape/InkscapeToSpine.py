@@ -38,44 +38,44 @@ def parse_css_style(style):
 class SpineExporter(inkex.Effect):
 	def __init__(self):
 		inkex.Effect.__init__(self)
-		self.OptionParser.add_option(
+		self.arg_parser.add_argument(
 			"--outdir",
 			action="store",
-			type="string",
+			type=str,
 			dest="outdir",
 			default="~",
 			help="Path to the export directory"
 		)
-		self.OptionParser.add_option(
+		self.arg_parser.add_argument(
 			"--dpi",
 			action="store",
-			type="float",
+			type=float,
 			dest="dpi",
 			default=90.0,
 			help="Resolution to export at"
 		)
-		self.OptionParser.add_option(
+		self.arg_parser.add_argument(
 			"--json",
-			type="inkbool",
+			type=inkex.Boolean,
 			dest="json",
 			help="Create a Spine JSON file",
 		)
-		self.OptionParser.add_option(
+		self.arg_parser.add_argument(
 			"--ignore-hidden",
-			type="inkbool",
+			type=inkex.Boolean,
 			dest="ignore_hidden",
 			help="Ignore hidden layers",
 		)
-		self.OptionParser.add_option(
+		self.arg_parser.add_argument(
 			"--pretty-print",
-			type="inkbool",
+			type=inkex.Boolean,
 			dest="pretty",
 			help="Pretty-print the JSON file",
 		)
-		self.OptionParser.add_option(
+		self.arg_parser.add_argument(
 			"--merge",
 			action="store",
-			type="string",
+			type=str,
 			dest="merge",
 			default="",
 			help="Spine JSON file to merge with"
@@ -86,15 +86,15 @@ class SpineExporter(inkex.Effect):
 		self.bone_coords = {}
 
 	@property
-	def svg(self):
+	def root(self):
 		return self.document.getroot()
 
 	@property
 	def friendly_name(self):
-		docname = self.svg.xpath("//@sodipodi:docname", namespaces=inkex.NSS)
+		docname = self.root.xpath("//@sodipodi:docname", namespaces=inkex.NSS)
 		if docname:
 			return docname[0].replace(".svg", "")
-		return self.svg.attrib["id"]
+		return self.root.attrib["id"]
 
 	@property
 	def layers(self):
@@ -110,25 +110,28 @@ class SpineExporter(inkex.Effect):
 				ret.append(e)
 			return ret
 
-		return get_layers(self.svg)
+		return get_layers(self.root)
 
 	@property
 	def drawing_size(self):
-		x, y, width, height = self.get_bounding_box(self.svg.attrib["id"])
+		x, y, width, height = self.get_bounding_box(self.root.attrib["id"])
 		return width, height
 
 	def get_bounding_box(self, id):
-		p = run_inkscape(["--shell"])
-		stdin = []
-		for k in ("x", "y", "width", "height"):
-			stdin.append("--file=%r --query-id=%s --query-%s " % (self.svg_file, id, k)) # line 124
-		stdin.append("")  # For the last command
-		stdout, stderr = p.communicate("\n".join(stdin))
-		# Remove the "Inkscape interactive shell mode" noise
-		stdout = stdout[stdout.index("\n>") + 1:]
-		# inkex.debug(stdout)
-		x, y, width, height = stdout.split(">")[1:-1]
-		return float(x), float(y), float(width), float(height)
+		with run_inkscape(["--shell"]) as p:
+			stdin = []
+			stdin.append("file-open:%s; select-by-id:%s; query-x; query-y; query-width; query-height; file-close" % (self.options.input_file, id))
+			stdin.append("")  # For the last command
+			stdout, stderr = p.communicate(str.encode("\n".join(stdin)))
+
+			# Decode to strings
+			stdout = stdout.decode("utf-8")
+			stderr = stderr.decode("utf-8")
+			# Remove the "Inkscape interactive shell mode" noise
+			stdout = stdout[stdout.index(">") + 1:]
+			# inkex.utils.debug(stdout)
+			x, y, width, height = stdout.split("\n")[0:-1]
+			return float(x), float(y), float(width), float(height)
 
 	def autocrop_in_place(self, path):
 		from PIL import Image
@@ -254,16 +257,15 @@ class SpineExporter(inkex.Effect):
 
 			command = (
 				"inkscape",
-				"--export-png", outfile,
+				self.options.input_file,
+				"--export-filename", outfile,
 				"--export-id-only",
 				"--export-id", id,
 				"--export-dpi", str(self.options.dpi),
-				"--file", self.args[-1],
 			)
 
-			process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-			process.wait()
-
+			with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE) as process:
+				process.wait()
 			bbox = self.get_bounding_box(id)
 			self.merge_spine_skin(spine_struct, label, bbox)
 			# Slot merge must come after the skin merge because we need the
@@ -281,6 +283,6 @@ class SpineExporter(inkex.Effect):
 				json.dump(spine_struct, f, **args)
 
 
-inkex.localize()
+inkex.localization.localize()
 effect = SpineExporter()
-effect.affect()
+effect.run()
