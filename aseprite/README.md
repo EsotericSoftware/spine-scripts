@@ -1,12 +1,14 @@
+### Update - This has been added to the official Spine Scripts repository:
+
+ https://github.com/EsotericSoftware/spine-scripts
+
+___
+
 # aseprite-to-spine 
 
 ## Lua Script for importing Aseprite projects into Spine
 
-## v1.0
-
-### Links
-* [Aseprite](https://www.aseprite.org/)
-* [Esoteric Software](http://esotericsoftware.com/)
+## v1.1
 
 ### Installation
 
@@ -29,11 +31,15 @@ After following these steps, the "Prepare-For-Spine" script should show up in th
 
 ### Known Issues 
 * Hiding a group of layers will not exclude it from the export.  Each layer needs to be shown or hidden individually (group visibility is ignored)
-* The Spine will be imported with a name of "{filename}.aseprite".  Eventually i'll trim off the .asperite part when I get a sec.
 * Not as many options as the Photshop script.  Maybe I'll add these in the future but honestly i've never used any of them so we will see.
 
 ### Version History
 
-#### v1.0 
+#### v1.1
+
+- Changed to export images trimmed to the size of their non-transparent pixels.
+- Hidden layers are not included in the json file for importing into Spine.
+
+#### v1.0
 
 Initial Release
