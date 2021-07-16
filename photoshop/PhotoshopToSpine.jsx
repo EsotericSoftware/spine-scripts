@@ -155,8 +155,8 @@ function run () {
 		}
 
 		var skinName = findTagValue(layer, "skin");
-		if (skinName == "default") {
-			error("The skin name \"default\" is reserved. Please use a different name.");
+		if (skinName && skinName.toLowerCase() == "default") {
+			error("The skin name \"default\" is reserved: " + layerPath(layer) + "\nPlease use a different name.");
 			continue;
 		}
 		if (!skinName) skinName = "default";
