@@ -371,7 +371,7 @@ function run () {
 					if (!isBackgroundLayer) activeDocument.trim(TrimType.TRANSPARENT, false, true, true, false);
 					x -= activeDocument.width.as("px") * settings.scale;
 					y -= activeDocument.height.as("px") * settings.scale;
-					if (!isBackgroundLayer) activeDocument.trim(TrimType.TRANSPARENT, true, false, false, true);
+					if (!isBackgroundLayer) activeDocument.trim(TrimType.TRANSPARENT, true, true, true, true);
 				}
 				var width = activeDocument.width.as("px") * settings.scale + settings.padding * 2;
 				var height = activeDocument.height.as("px") * settings.scale + settings.padding * 2;
