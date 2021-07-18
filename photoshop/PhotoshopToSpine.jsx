@@ -13,7 +13,7 @@ app.bringToFront();
 //     * Neither the name of Esoteric Software nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-var scriptVersion = 6.8; // This is incremented every time the script is modified, so you know if you have the latest.
+var scriptVersion = 6.9; // This is incremented every time the script is modified, so you know if you have the latest.
 
 var cs2 = parseInt(app.version) < 10;
 
@@ -68,7 +68,7 @@ function run () {
 	if (settings.writeTemplate) {
 		if (settings.scale != 1) {
 			storeHistory();
-			scaleImage();
+			scaleImage(settings.scale);
 		}
 
 		var file = new File(imagesDir + "template.png");
@@ -127,6 +127,11 @@ function run () {
 			layer.attachmentPath = layer.attachmentPath.substring(1);
 		else
 			layer.attachmentPath = folderPath + layer.attachmentPath;
+
+		var scale = findTagValue(layer, "scale:");
+		if (!scale) scale = 1;
+		layer.scale = parseFloat(scale);
+		if (isNaN(layer.scale)) error("Invalid scale " + scale + ": " + layerPath(layer));
 
 		var bone = null;
 		var boneLayer = findTagLayer(layer, "bone");
@@ -326,7 +331,7 @@ function run () {
 	json += '],\n"skins": {\n';
 
 	// Output skins.
-	var skinIndex = 0, layerCount = 0;
+	var skinIndex = 0, layerCount = 0, writeImages = settings.imagesDir;
 	for (var skinName in skins) {
 		if (!skins.hasOwnProperty(skinName)) continue;
 		var skinSlots = skins[skinName];
@@ -352,6 +357,7 @@ function run () {
 
 				var attachmentName = layer.attachmentName, attachmentPath = layer.attachmentPath, placeholderName = layer.placeholderName;
 				var isBackgroundLayer = layer.isBackgroundLayer;
+				var scale = layer.scale;
 
 				if (isGroup(layer)) {
 					activeDocument.activeLayer = layer;
@@ -362,35 +368,43 @@ function run () {
 
 				rasterizeStyles(layer);
 
-				storeHistory();
+				if (writeImages) storeHistory();
 
-				var x = 0, y = 0;
+				var x = 0, y = 0, width, height;
 				if (settings.trimWhitespace) {
-					x = activeDocument.width.as("px") * settings.scale;
-					y = activeDocument.height.as("px") * settings.scale;
-					if (!isBackgroundLayer) activeDocument.trim(TrimType.TRANSPARENT, false, true, true, false);
-					x -= activeDocument.width.as("px") * settings.scale;
-					y -= activeDocument.height.as("px") * settings.scale;
-					if (!isBackgroundLayer) activeDocument.trim(TrimType.TRANSPARENT, true, true, true, true);
+					x = layer.bounds[0].as("px");
+					y = layer.bounds[1].as("px");
+					var x2 = layer.bounds[2].as("px");
+					var y2 = layer.bounds[3].as("px");
+					width = x2 - x;
+					height = y2 - y;
+					if (writeImages) activeDocument.crop([x - xOffSet, y - yOffSet, x2 - xOffSet, y2 - yOffSet], 0, width, height);
+					x *= settings.scale;
+					y *= settings.scale;
+				} else {
+					width = activeDocument.width.as("px") - xOffSet * settings.scale;
+					height = activeDocument.height.as("px") - yOffSet * settings.scale;
 				}
-				var width = activeDocument.width.as("px") * settings.scale + settings.padding * 2;
-				var height = activeDocument.height.as("px") * settings.scale + settings.padding * 2;
+				width = width * settings.scale + settings.padding * 2;
+				height = height * settings.scale + settings.padding * 2;
 
 				// Save image.
-				if (settings.imagesDir) {
-					if (settings.scale != 1) scaleImage();
-					if (settings.padding > 0) activeDocument.resizeCanvas(width, height, AnchorPosition.MIDDLECENTER);
+				if (writeImages) {
+					scaleImage(settings.scale * scale);
+					if (settings.padding > 0) activeDocument.resizeCanvas(width * scale, height * scale, AnchorPosition.MIDDLECENTER);
 
 					var file = new File(imagesDir + attachmentPath + ".png");
 					file.parent.create();
 					savePNG(file);
+					restoreHistory();
 				}
 
-				restoreHistory();
 				if (layerCount < totalLayerCount) deleteLayer(layer);
 
 				x += Math.round(width) / 2 - settings.padding;
-				y += Math.round(height) / 2 - settings.padding;
+				y = activeDocument.height.as("px") - (y + Math.round(height) / 2 - settings.padding);
+				width *= scale;
+				height *= scale;
 
 				// Make relative to the Photoshop document ruler origin.
 				x -= xOffSet * settings.scale;
@@ -405,7 +419,7 @@ function run () {
 				if (attachmentName != placeholderName) json += '"name": ' + quote(attachmentName) + ', ';
 				if (attachmentName != attachmentPath) json += '"path": ' + quote(attachmentPath) + ', ';
 				json += '"x": ' + x + ', "y": ' + y + ', "width": ' + Math.round(width) + ', "height": ' + Math.round(height);
-
+				if (scale != 1) json += ', "scaleX": ' + (1 / scale) + ', "scaleY": ' + (1 / scale);
 				json += " }" + (++skinLayerIndex < skinLayersCount ? ",\n" : "\n");
 			}
 
@@ -719,6 +733,7 @@ function showHelpDialog () {
 		+ "•  [bone] or [bone:name]  Layers, slots, and bones are placed under a bone. The bone is created at the center of a visible layer. Bone groups can be nested.\n"
 		+ "•  [slot] or [slot:name]  Layers are placed in a slot.\n"
 		+ "•  [skin] or [skin:name]  Layers are placed in a skin. Skin layer images are output in a subfolder for the skin.\n"
+		+ "•  [scale:number]  Layers are scaled. Their attachments are scaled inversely, so they appear the same size in Spine.\n"
 		+ "•  [folder] or [folder:name]  Layers images are output in a subfolder. Folder groups can be nested.\n"
 		+ "•  [ignore]  Layers, groups, and any child groups will not be output.\n"
 		+ "\n"
@@ -897,6 +912,7 @@ function isValidLayerTag (tag) {
 	if (startsWith(tag, "skin:")) return true;
 	if (startsWith(tag, "folder:")) return true;
 	if (startsWith(tag, "path:")) return true;
+	if (startsWith(tag, "scale:")) return true;
 	return false;
 }
 
@@ -1034,8 +1050,9 @@ function rasterizeStyles (layer) {
 	} catch (ignored) {}
 }
 
-function scaleImage () {
-	var imageSize = activeDocument.width.as("px") * settings.scale;
+function scaleImage (scale) {
+	if (scale == 1) return;
+	var imageSize = activeDocument.width.as("px") * scale;
 	activeDocument.resizeImage(UnitValue(imageSize, "px"), null, null, ResampleMethod.BICUBICSHARPER);
 }
 

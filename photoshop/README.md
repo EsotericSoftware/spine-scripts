@@ -58,6 +58,7 @@ Tags in square brackets can be used in layer and group names to customize the ou
 * `[bone]` or `[bone:name]`  Layers, slots, and bones are placed under a bone. The bone is created at the center of a visible layer. Bone groups can be nested.
 * `[slot]` or `[slot:name]`  Layers are placed in a slot.
 * `[skin]` or `[skin:name]`  Layers are placed in a skin. Skin layer images are output in a subfolder for the skin.
+* `[scale:number]`  Layers are scaled. Their attachments are scaled inversely, so they appear the same size in Spine.
 * `[folder]` or `[folder:name]`  Layers images are output in a subfolder. Folder groups can be nested.
 * `[ignore]` Layers, groups, and any child groups will not be output.
 
