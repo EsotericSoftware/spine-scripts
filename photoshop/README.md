@@ -14,7 +14,7 @@ To see the Spine logo on the dialog, you may optionally click [logo.png](https:/
 
 ## Install
 
-Navigate to the Photoshop installation folder, then choose the folder `Presents`, then `Scripts`. On Windows the path is likely similar to this:
+Navigate to the Photoshop installation folder, then choose the folder `Presets`, then `Scripts`. On Windows the path is likely similar to this:
 ```
 C:\Program Files\Adobe\Adobe Photoshop CC 2019\Presets\Scripts
 ```
