@@ -13,7 +13,7 @@ app.bringToFront();
 //     * Neither the name of Esoteric Software nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-var scriptVersion = 6.10; // This is incremented every time the script is modified, so you know if you have the latest.
+var scriptVersion = 6.11; // This is incremented every time the script is modified, so you know if you have the latest.
 
 var cs2 = parseInt(app.version) < 10;
 
@@ -88,7 +88,7 @@ function run () {
 
 	// Collect and hide layers.
 	var layers = [];
-	collectLayers(activeDocument, layers);
+	collectLayers(activeDocument, 1, layers); // 1 to skip first layer, added above.
 
 	// Add a history item to prevent layer visibility from changing by restoreHistory.
 	activeDocument.artLayers.add();
@@ -103,10 +103,7 @@ function run () {
 	for (var i = 0, n = layers.length; i < n; i++) {
 		if (cancel) return;
 		var layer = layers[i];
-		if (layer.kind != LayerKind.NORMAL && !isGroup(layer)) {
-			layer.rasterize(RasterizeType.ENTIRELAYER); // In case rasterizeAll failed.
-			if (layer.kind != LayerKind.NORMAL) continue;
-		}
+		if (layer.kind != LayerKind.NORMAL && !isGroup(layer)) continue;
 
 		var name = stripTags(layer.name).replace(/.png$/, "");
 		name = name.replace(/[\\:"*?<>|]/g, "").replace(/^\.+$/, "").replace(/^__drag$/, ""); // Illegal.
@@ -152,10 +149,11 @@ function run () {
 				set(bones, boneName, bone = { name: boneName, parent: parent, children: [], layer: boneLayer });
 				parent.children.push(bone);
 			}
-			bone.x = layer.bounds[0].as("px") * settings.scale - settings.padding;
-			bone.x += (layer.bounds[2].as("px") - layer.bounds[0].as("px")) * settings.scale / 2 + settings.padding;
-			bone.y = (activeDocument.height.as("px") - layer.bounds[1].as("px")) * settings.scale + settings.padding;
-			bone.y -= (layer.bounds[3].as("px") - layer.bounds[1].as("px")) * settings.scale / 2 + settings.padding;
+			var bounds = layer.bounds, x = bounds[0].as("px"), y = bounds[1].as("px");
+			bone.x = x * settings.scale - settings.padding;
+			bone.x += (bounds[2].as("px") - x) * settings.scale / 2 + settings.padding;
+			bone.y = (activeDocument.height.as("px") - y) * settings.scale + settings.padding;
+			bone.y -= (bounds[3].as("px") - y) * settings.scale / 2 + settings.padding;
 			// Make relative to the Photoshop document ruler origin.
 			bone.x -= xOffSet * settings.scale;
 			bone.y -= (activeDocument.height.as("px") - yOffSet) * settings.scale;
@@ -174,7 +172,12 @@ function run () {
 		var slot = get(slots, layer.slotName);
 		if (!slot) {
 			slotsCount++;
-			set(slots, layer.slotName, slot = { bone: bone, attachment: layer.wasVisible ? layer.placeholderName : null, placeholders: {} });
+			set(slots, layer.slotName, slot = {
+				bone: bone,
+				attachment: layer.wasVisible ? layer.placeholderName : null,
+				placeholders: {},
+				attachments: false
+			});
 		}
 		if (layer.blendMode == BlendMode.LINEARDODGE)
 			slot.blend = "additive";
@@ -288,69 +291,23 @@ function run () {
 		return;
 	}
 
-	// Output skeleton.
-	var json = '{ "skeleton": { "images": "' + imagesDir + '" },\n"bones": [\n';
-
-	// Output bones.
-	function outputBone (bone) {
-		var json = bone.parent ? ",\n" : "";
-		json += '\t{ "name": ' + quote(bone.name);
-		var x = bone.x, y = bone.y;
-		if (bone.parent) {
-			x -= bone.parent.x;
-			y -= bone.parent.y;
-			json += ', "parent": ' + quote(bone.parent.name);
-		}
-		if (x) json += ', "x": ' + x;
-		if (y) json += ', "y": ' + y;
-		json += ' }';
-		for (var i = 0, n = bone.children.length; i < n; i++)
-			json += outputBone(bone.children[i]);
-		return json;
-	}
-	for (var boneName in bones) {
-		if (cancel) return;
-		if (!bones.hasOwnProperty(boneName)) continue;
-		var bone = bones[boneName];
-		if (!bone.parent) json += outputBone(bone);
-	}
-	json += '\n],\n"slots": [\n';
-
-	// Output slots.
-	var slotIndex = 0;
-	for (var slotName in slots) {
-		if (cancel) return;
-		if (!slots.hasOwnProperty(slotName)) continue;
-		var slot = slots[slotName];
-		slotName = stripName(slotName);
-		json += '\t{ "name": ' + quote(slotName) + ', "bone": ' + quote(slot.bone ? slot.bone.name : "root");
-		if (slot.attachment) json += ', "attachment": ' + quote(slot.attachment);
-		if (slot.blend) json += ', "blend": ' + quote(slot.blend);
-		json += ' }';
-		slotIndex++;
-		json += slotIndex < slotsCount ? ",\n" : "\n";
-	}
-	json += '],\n"skins": {\n';
-
 	// Output skins.
-	var skinIndex = 0, layerCount = 0, writeImages = settings.imagesDir;
+	var jsonSkins = "", layerCount = 0, writeImages = settings.imagesDir;
 	for (var skinName in skins) {
 		if (!skins.hasOwnProperty(skinName)) continue;
 		var skinSlots = skins[skinName];
 		skinName = stripName(skinName);
-		json += '\t"' + skinName + '": {\n';
 
-		var skinSlotIndex = 0, skinSlotsCount = countKeys(skinSlots);
+		var jsonSkin = "";
 		for (var slotName in skinSlots) {
 			if (!skinSlots.hasOwnProperty(slotName)) continue;
-			var bone = slots[slotName].bone;
+			var slot = slots[slotName];
+			var bone = slot.bone;
 			var skinLayers = skinSlots[slotName];
 			slotName = stripName(slotName);
 
-			json += '\t\t' + quote(slotName) + ': {\n';
-
-			var skinLayerIndex = 0, skinLayersCount = skinLayers.length;
-			for (var i = skinLayersCount - 1; i >= 0; i--) {
+			var jsonSlot = "";
+			for (var i = skinLayers.length - 1; i >= 0; i--) {
 				var layer = skinLayers[i];
 				layer.visible = true;
 
@@ -370,20 +327,23 @@ function run () {
 
 				rasterizeStyles(layer);
 
+				var bounds = layer.bounds, x = bounds[0].as("px"), y = bounds[1].as("px"), x2 = bounds[2].as("px"), y2 = bounds[3].as("px");
+				var width = x2 - x, height = y2 - y;
+				if (!width || !height) {
+					deleteLayer(layer);
+					continue;
+				}
+				slot.attachments = true;
+
 				if (writeImages) storeHistory();
 
-				var x = 0, y = 0, width, height;
 				if (settings.trimWhitespace) {
-					x = layer.bounds[0].as("px");
-					y = layer.bounds[1].as("px");
-					var x2 = layer.bounds[2].as("px");
-					var y2 = layer.bounds[3].as("px");
-					width = x2 - x;
-					height = y2 - y;
 					if (writeImages) activeDocument.crop([x - xOffSet, y - yOffSet, x2 - xOffSet, y2 - yOffSet], 0, width, height);
 					x *= settings.scale;
 					y *= settings.scale;
 				} else {
+					x = 0;
+					y = 0;
 					width = activeDocument.width.as("px") - xOffSet * settings.scale;
 					height = activeDocument.height.as("px") - yOffSet * settings.scale;
 				}
@@ -417,22 +377,66 @@ function run () {
 					y -= bone.y;
 				}
 
-				json += "\t\t\t" + quote(placeholderName) + ': { ';
-				if (attachmentName != placeholderName) json += '"name": ' + quote(attachmentName) + ', ';
-				if (attachmentName != attachmentPath) json += '"path": ' + quote(attachmentPath) + ', ';
-				json += '"x": ' + x + ', "y": ' + y + ', "width": ' + Math.round(width) + ', "height": ' + Math.round(height);
-				if (scale != 1) json += ', "scaleX": ' + (1 / scale) + ', "scaleY": ' + (1 / scale);
-				json += " }" + (++skinLayerIndex < skinLayersCount ? ",\n" : "\n");
+				jsonSlot += "\t\t\t" + quote(placeholderName) + ': { ';
+				if (attachmentName != placeholderName) jsonSlot += '"name": ' + quote(attachmentName) + ', ';
+				if (attachmentName != attachmentPath) jsonSlot += '"path": ' + quote(attachmentPath) + ', ';
+				jsonSlot += '"x": ' + x + ', "y": ' + y + ', "width": ' + Math.round(width) + ', "height": ' + Math.round(height);
+				if (scale != 1) jsonSlot += ', "scaleX": ' + (1 / scale) + ', "scaleY": ' + (1 / scale);
+				jsonSlot += ' },\n';
 			}
-
-			json += "\t\t\}" + (++skinSlotIndex < skinSlotsCount ? ",\n" : "\n");
+			if (jsonSlot) jsonSkin += '\t\t' + quote(slotName) + ': {\n' + jsonSlot.substring(0, jsonSlot.length - 2) + '\n\t\t\},\n';
 		}
-
-		json += "\t}" + (++skinIndex <= skinsCount ? ",\n" : "\n");
+		if (jsonSkin) jsonSkins += '\t"' + skinName + '": {\n' + jsonSkin.substring(0, jsonSkin.length - 2) + '\n\t},\n';
 	}
-	json += '},\n"animations": { "animation": {} }\n}';
 
 	activeDocument.close(SaveOptions.DONOTSAVECHANGES);
+
+	// Output skeleton.
+	var json = '{ "skeleton": { "images": "' + imagesDir + '" },\n"bones": [\n';
+
+	// Output bones.
+	function outputBone (bone) {
+		var json = bone.parent ? ',\n' : '';
+		json += '\t{ "name": ' + quote(bone.name);
+		var x = bone.x, y = bone.y;
+		if (bone.parent) {
+			x -= bone.parent.x;
+			y -= bone.parent.y;
+			json += ', "parent": ' + quote(bone.parent.name);
+		}
+		if (x) json += ', "x": ' + x;
+		if (y) json += ', "y": ' + y;
+		json += ' }';
+		for (var i = 0, n = bone.children.length; i < n; i++)
+			json += outputBone(bone.children[i]);
+		return json;
+	}
+	for (var boneName in bones) {
+		if (cancel) return;
+		if (!bones.hasOwnProperty(boneName)) continue;
+		var bone = bones[boneName];
+		if (!bone.parent) json += outputBone(bone);
+	}
+	json += '\n],\n"slots": [\n';
+
+	// Output slots.
+	var slotIndex = 0;
+	for (var slotName in slots) {
+		if (cancel) return;
+		if (!slots.hasOwnProperty(slotName)) continue;
+		var slot = slots[slotName];
+		if (!slot.attachments) continue;
+		slotName = stripName(slotName);
+		json += '\t{ "name": ' + quote(slotName) + ', "bone": ' + quote(slot.bone ? slot.bone.name : "root");
+		if (slot.attachment) json += ', "attachment": ' + quote(slot.attachment);
+		if (slot.blend) json += ', "blend": ' + quote(slot.blend);
+		json += ' }';
+		slotIndex++;
+		json += slotIndex < slotsCount ? ',\n' : '\n';
+	}
+	json += '],\n';
+	if (jsonSkins) json += '"skins": {\n' + jsonSkins.substring(0, jsonSkins.length - 2) + '\n},\n';
+	json += '"animations": { "animation": {} }\n}';
 
 	// Output JSON file.
 	if (settings.writeJson && settings.jsonPath) {
@@ -664,7 +668,7 @@ function showSettingsDialog () {
 			run();
 			// alert(new Date().getTime() - start);
 		} catch (e) {
-			alert("An unexpected error has occurred:\n\n[Line " + e.line + "] " + e.message + "\n\nTo debug, run the PhotoshopToSpine script using Adobe ExtendScript "
+			alert("An unexpected error has occurred:\n\n[line " + e.line + "] " + e.message + "\n\nTo debug, run the PhotoshopToSpine script using Adobe ExtendScript "
 				+ "with \"Debug > Do not break on guarded exceptions\" unchecked.");
 			debugger;
 		} finally {
@@ -814,9 +818,9 @@ function deleteLayer (layer) {
 	layer.remove();
 }
 
-function collectLayers (parent, collect) {
+function collectLayers (parent, skipFirst, collect) {
 	outer:
-	for (var i = parent.layers.length - 1; i >= 0; i--) {
+	for (var i = parent.layers.length - 1; i >= skipFirst; i--) {
 		if (cancel) return;
 		var layer = parent.layers[i];
 		if (settings.ignoreHiddenLayers && !layer.visible) continue;
@@ -829,9 +833,12 @@ function collectLayers (parent, collect) {
 			continue;
 		}
 		var group = isGroup(layer);
-		if (!group && layer.bounds[2] == 0 && layer.bounds[3] == 0) {
-			deleteLayer(layer);
-			continue;
+		if (!group && layer.kind != LayerKind.NORMAL) {
+			layer.rasterize(RasterizeType.ENTIRELAYER); // In case rasterizeAll failed.
+			if (layer.kind != LayerKind.NORMAL) {
+				deleteLayer(layer);
+				continue;
+			}
 		}
 
 		// Ensure tags are valid.
@@ -872,7 +879,7 @@ function collectLayers (parent, collect) {
 			collectGroupMerge(layer);
 			if (!layer.layers || layer.layers.length == 0) continue;
 		} else if (layer.layers && layer.layers.length > 0) {
-			collectLayers(layer, collect);
+			collectLayers(layer, 0, collect);
 			continue;
 		} else if (group)
 			continue;
@@ -1143,13 +1150,6 @@ function savePNG (file) {
 }
 
 // JavaScript utility:
-
-function countKeys (object) {
-	var count = 0;
-	for (var key in object)
-		if (object.hasOwnProperty(key)) count++;
-	return count;
-}
 
 function joinKeys (object, glue) {
 	if (!glue) glue = ", ";
