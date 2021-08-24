@@ -100,7 +100,7 @@ Note you will need to repeat this edit if you get a new version of the script.
 
 When the script fails with an error, it can be useful to debug the script to determine which line in the script is failing. A script should never be able to crash Photoshop, no matter what it does, but sometimes Photoshop has bugs and debugging can be used to find which line the in script causes Photoshop to crash.
 
-Debugging requires the [Adobe ExtendScript Toolkit](https://www.adobe.com/products/extendscript-toolkit.htmlESTK). [Older versions](https://www.adobe.com/devnet/scripting/estk.html) are also available. A mirror for version 3.5.0 is available [here](https://esotericsoftware.com/files/AdobeExtendScriptToolkit3.5.0-mul.zip).
+Debugging requires the [Adobe ExtendScript Toolkit](https://www.adobe.com/products/extendscript-toolkit.htmlESTK). [Older versions](https://www.adobe.com/devnet/scripting/estk.html) are also available. Windows mirrors: [3.5](https://esotericsoftware.com/files/AdobeExtendScriptToolkit3.5.0-mul.zip) and [4.0](https://esotericsoftware.com/files/AdobeExtendScriptToolkit4-LS22.exe). macOS mirror: [4.0](https://esotericsoftware.com/files/AdobeExtendScriptToolkit4-LS22.exe)
 
 Run ExtendScript, then check `Debug > Do not break on guarded exceptions`. That means when a script is run, ExtendScript won't stop when an error occurs that the script handles ("guards"). In a few places it is normal that the script tries something, catches any error that occurs, then carries on, so you don't want ExtendScript stopping every time that happens. ExtendScript will still stop if an error occurs that the script doesn't catch.
 

@@ -13,7 +13,7 @@ app.bringToFront();
 //     * Neither the name of Esoteric Software nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-var scriptVersion = 6.9; // This is incremented every time the script is modified, so you know if you have the latest.
+var scriptVersion = 6.10; // This is incremented every time the script is modified, so you know if you have the latest.
 
 var cs2 = parseInt(app.version) < 10;
 
@@ -89,7 +89,6 @@ function run () {
 	// Collect and hide layers.
 	var layers = [];
 	collectLayers(activeDocument, layers);
-	var layersCount = layers.length;
 
 	// Add a history item to prevent layer visibility from changing by restoreHistory.
 	activeDocument.artLayers.add();
@@ -101,10 +100,13 @@ function run () {
 	var skinDuplicates = {};
 	var totalLayerCount = 0;
 	outer:
-	for (var i = 0; i < layersCount; i++) {
+	for (var i = 0, n = layers.length; i < n; i++) {
 		if (cancel) return;
 		var layer = layers[i];
-		if (layer.kind != LayerKind.NORMAL && !isGroup(layer)) continue;
+		if (layer.kind != LayerKind.NORMAL && !isGroup(layer)) {
+			layer.rasterize(RasterizeType.ENTIRELAYER); // In case rasterizeAll failed.
+			if (layer.kind != LayerKind.NORMAL) continue;
+		}
 
 		var name = stripTags(layer.name).replace(/.png$/, "");
 		name = name.replace(/[\\:"*?<>|]/g, "").replace(/^\.+$/, "").replace(/^__drag$/, ""); // Illegal.
@@ -662,7 +664,7 @@ function showSettingsDialog () {
 			run();
 			// alert(new Date().getTime() - start);
 		} catch (e) {
-			alert("An unexpected error has occurred.\n\nTo debug, run the PhotoshopToSpine script using Adobe ExtendScript "
+			alert("An unexpected error has occurred:\n\n[Line " + e.line + "] " + e.message + "\n\nTo debug, run the PhotoshopToSpine script using Adobe ExtendScript "
 				+ "with \"Debug > Do not break on guarded exceptions\" unchecked.");
 			debugger;
 		} finally {
@@ -1032,6 +1034,7 @@ function rulerOrigin (axis) {
 	return result.getInteger(key) >> 16;
 }
 
+// Seems to not be available when the document has >= 500 layers.
 function rasterizeAll () {
 	try {
 		executeAction(sID("rasterizeAll"), undefined, DialogModes.NO);
