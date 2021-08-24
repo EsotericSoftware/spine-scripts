@@ -84,14 +84,14 @@ function run () {
 	rasterizeAll();
 
 	// Add a history item to prevent layer visibility from changing by the active layer being reset to the top.
-	activeDocument.artLayers.add();
+	activeDocument.artLayers.add().name = "Collecting layers";
 
 	// Collect and hide layers.
 	var layers = [];
 	collectLayers(activeDocument, 1, layers); // 1 to skip first layer, added above.
 
 	// Add a history item to prevent layer visibility from changing by restoreHistory.
-	activeDocument.artLayers.add();
+	activeDocument.artLayers.add().name = "Processing layers";
 
 	// Store the bones, slot names, and layers for each skin.
 	var bones = { _root: { name: "root", x: 0, y: 0, children: [] } };
