@@ -13,7 +13,7 @@ app.bringToFront();
 //     * Neither the name of Esoteric Software nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-var scriptVersion = 6.12; // This is incremented every time the script is modified, so you know if you have the latest.
+var scriptVersion = 6.13; // This is incremented every time the script is modified, so you know if you have the latest.
 
 var cs2 = parseInt(app.version) < 10;
 
@@ -34,9 +34,8 @@ var defaultSettings = {
 	jsonPath: "./",
 };
 var settings = loadSettings();
-showSettingsDialog();
 
-var progress, cancel, errors;
+var progress, cancel, errors, topLayer;
 function run () {
 	errors = [];
 	showProgressDialog();
@@ -84,14 +83,19 @@ function run () {
 	rasterizeAll();
 
 	// Add a history item to prevent layer visibility from changing by the active layer being reset to the top.
-	activeDocument.artLayers.add().name = "Collecting layers";
+	topLayer = activeDocument.artLayers.add();
+	topLayer.name = "Collecting layers";
+	setProgress(0, "Collecting layers...");
 
 	// Collect and hide layers.
 	var layers = [];
-	collectLayers(activeDocument, 1, layers); // 1 to skip first layer, added above.
+	collectLayers(activeDocument.layers, 1, layers); // 1 to skip first layer, added above.
 
 	// Add a history item to prevent layer visibility from changing by restoreHistory.
-	activeDocument.artLayers.add().name = "Processing layers";
+	topLayer.remove();
+	topLayer = activeDocument.artLayers.add();
+	topLayer.name = "Processing layers";
+	setProgress(0, "Processing layers...");
 
 	// Store the bones, slot names, and layers for each skin.
 	var bones = { _root: { name: "root", x: 0, y: 0, children: [] } };
@@ -313,14 +317,14 @@ function run () {
 				layer.visible = true;
 
 				if (cancel) return;
-				setProgress(++layerCount / totalLayerCount, trim(layer.name));
+				setProgress(++layerCount / totalLayerCount, "Layer: " + trim(layer.name));
 
 				var attachmentName = layer.attachmentName, attachmentPath = layer.attachmentPath, placeholderName = layer.placeholderName;
 				var isBackgroundLayer = layer.isBackgroundLayer;
 				var scale = layer.scale;
 
+				activeDocument.activeLayer = layer;
 				if (isGroup(layer)) {
-					activeDocument.activeLayer = layer;
 					try {
 						layer = layer.merge();
 					} catch (ignored) {}
@@ -331,7 +335,7 @@ function run () {
 				var bounds = layer.bounds, x = bounds[0].as("px"), y = bounds[1].as("px"), x2 = bounds[2].as("px"), y2 = bounds[3].as("px");
 				var width = x2 - x, height = y2 - y;
 				if (!width || !height) {
-					deleteLayer(layer);
+					deleteLayer(layer, true);
 					continue;
 				}
 				slot.attachments = true;
@@ -362,7 +366,7 @@ function run () {
 					restoreHistory();
 				}
 
-				if (layerCount < totalLayerCount) deleteLayer(layer);
+				if (layerCount < totalLayerCount) deleteLayer(layer, true);
 
 				x += Math.round(width) / 2 - settings.padding;
 				y = activeDocument.height.as("px") - (y + Math.round(height) / 2 - settings.padding);
@@ -704,12 +708,12 @@ function loadSettings () {
 
 function saveSettings () {
 	if (cs2) return; // No putCustomOptions.
-	var action = new ActionDescriptor();
+	var desc = actionDesc();
 	for (var key in defaultSettings) {
 		if (!defaultSettings.hasOwnProperty(key)) continue;
-		action["put" + getOptionType(defaultSettings[key])](sID(key), settings[key]);
+		desc["put" + getOptionType(defaultSettings[key])](sID(key), settings[key]);
 	}
-	app.putCustomOptions(sID("settings"), action, true);
+	app.putCustomOptions(sID("settings"), desc, true);
 }
 
 function getOptionType (value) {
@@ -798,32 +802,40 @@ function showProgressDialog () {
 	};
 }
 
-function setProgress (percent, layerName) {
+function setProgress (percent, text) {
 	progress.bar.value = 10000 * percent;
-	progress.message.text = "Layer: " + layerName;
+	progress.message.text = text;
 	if (!progress.dialog.active) progress.dialog.active = true;
 }
 
 // PhotoshopToSpine utility:
 
-function unlock (layer) {
-	if (layer.allLocked) layer.allLocked = false;
-	if (!layer.layers) return;
-	for (var i = layer.layers.length - 1; i >= 0; i--)
-		unlock(layer.layers[i]);
+function actionDesc () {
+	var desc = new ActionDescriptor();
+	desc.putBoolean(sID("preventAbort"), true);
+	desc.putBoolean(sID("suppressLowPriorityEvents"), true);
+	return desc;
 }
 
-function deleteLayer (layer) {
+function unlock (layer) {
+	if (layer.allLocked) layer.allLocked = false;
+	var layers = layer.layers;
+	if (!layers) return;
+	for (var i = layers.length - 1; i >= 0; i--)
+		unlock(layers[i]);
+}
+
+function deleteLayer (layer, alreadyActive) {
 	unlock(layer);
-	activeDocument.activeLayer = activeDocument.artLayers[0];
+	if (!alreadyActive) activeDocument.activeLayer = topLayer;
 	layer.remove();
 }
 
-function collectLayers (parent, skipFirst, collect) {
+function collectLayers (parentLayers, skipFirst, collect) {
 	outer:
-	for (var i = parent.layers.length - 1; i >= skipFirst; i--) {
+	for (var i = parentLayers.length - 1; i >= skipFirst; i--) {
 		if (cancel) return;
-		var layer = parent.layers[i];
+		var layer = parentLayers[i];
 		if (settings.ignoreHiddenLayers && !layer.visible) continue;
 		if (settings.ignoreBackground && layer.isBackgroundLayer) {
 			deleteLayer(layer);
@@ -878,12 +890,16 @@ function collectLayers (parent, skipFirst, collect) {
 
 		if (group && findTagLayer(layer, "merge")) {
 			collectGroupMerge(layer);
-			if (!layer.layers || layer.layers.length == 0) continue;
-		} else if (layer.layers && layer.layers.length > 0) {
-			collectLayers(layer, 0, collect);
-			continue;
-		} else if (group)
-			continue;
+			var layers = layer.layers;
+			if (!layers || layers.length == 0) continue;
+		} else {
+			var layers = layer.layers;
+			if (layers && layers.length > 0) {
+				collectLayers(layers, 0, collect);
+				continue;
+			} else if (group)
+				continue;
+		}
 
 		if (changeVisibility) layer.visible = false;
 		collect.push(layer);
@@ -891,9 +907,10 @@ function collectLayers (parent, skipFirst, collect) {
 }
 
 function collectGroupMerge (parent) {
-	if (!parent.layers) return;
-	for (var i = parent.layers.length - 1; i >= 0; i--) {
-		var layer = parent.layers[i];
+	var parentLayers = parent.layers;
+	if (!parentLayers) return;
+	for (var i = parentLayers.length - 1; i >= 0; i--) {
+		var layer = parentLayers[i];
 		if (settings.ignoreHiddenLayers && !layer.visible) continue;
 		if (findTagLayer(layer, "ignore")) {
 			deleteLayer(layer);
@@ -976,10 +993,10 @@ function jsonPath (jsonPath) {
 	return absolutePath(jsonPath) + name.substring(0, name.indexOf(".")) + ".json";
 }
 
+var foldersRE = new RegExp("\\[(folder|skin)(:[^\\]]+)?\\]", "i");
 function folders (layer, path) {
-	var re = new RegExp("\\[(folder|skin)(:[^\\]]+)?\\]", "i");
 	while (layer) {
-		var matches = re.exec(layer.name);
+		var matches = foldersRE.exec(layer.name);
 		if (matches) {
 			var folder = findTagValue(layer, matches[1]);
 			if (matches[1] == "skin" && folder == "default") return folders(layer.parent, path);
@@ -1034,11 +1051,11 @@ function stripName (name) {
 }
 
 function rulerOrigin (axis) {
-	var key = sID("rulerOrigin" + axis);
-	var action = new ActionReference();
-	action.putProperty(sID("property"), key);
-	action.putEnumerated(sID("document"), sID("ordinal"), sID("targetEnum")); 
-	var result = executeActionGet(action);
+	var key = cID("Rlr" + axis);
+	var ref = new ActionReference();
+	ref.putProperty(cID("Prpr"), key);
+	ref.putEnumerated(cID("Dcmn"), cID("Ordn"), cID("Trgt")); 
+	var result = executeActionGet(ref);
 	return result.getInteger(key) >> 16;
 }
 
@@ -1049,15 +1066,18 @@ function rasterizeAll () {
 	} catch (ignored) {}
 }
 
+// Assumes layer is active.
 function rasterizeStyles (layer) {
 	try {
-		activeDocument.activeLayer = layer;
-		var desc = new ActionDescriptor();
 		var ref = new ActionReference();
+		ref.putProperty(cID("Prpr"), sID("layerEffects"));
 		ref.putEnumerated(cID("Lyr "), cID("Ordn"), cID("Trgt"));
-		desc.putReference(cID("null"), ref);
-		desc.putEnumerated(cID("What"), sID("rasterizeItem"), sID("layerStyle"));
-		executeAction(sID("rasterizeLayer"), desc, DialogModes.NO);
+		if (executeActionGet(ref).hasKey(sID("layerEffects"))) {
+			var desc = actionDesc();
+			desc.putReference(cID("null"), ref);
+			desc.putEnumerated(cID("What"), sID("rasterizeItem"), sID("layerStyle"));
+			executeAction(sID("rasterizeLayer"), desc, DialogModes.NO);
+		}
 	} catch (ignored) {}
 }
 
@@ -1107,11 +1127,11 @@ function absolutePath (path) {
 }
 
 function cID (id) {
-	return charIDToTypeID(id);
+	return app.charIDToTypeID(id);
 }
 
 function sID (id) {
-	return stringIDToTypeID(id);
+	return app.stringIDToTypeID(id);
 }
 
 function bgColor (control, r, g, b) {
@@ -1119,7 +1139,7 @@ function bgColor (control, r, g, b) {
 }
 
 function deselectLayers () {
-	var desc = new ActionDescriptor();
+	var desc = actionDesc();
 	var ref = new ActionReference();
 	ref.putEnumerated(cID("Lyr "), cID("Ordn"), cID("Trgt"));
 	desc.putReference(cID("null"), ref);
@@ -1127,7 +1147,7 @@ function deselectLayers () {
 }
 
 function convertToRGB () {
-	var desc = new ActionDescriptor();
+	var desc = actionDesc();
 	desc.putClass(cID("T   "), cID("RGBM"));
 	desc.putBoolean(cID("Mrge"), false);
 	desc.putBoolean(cID("Rstr"), true);
@@ -1144,7 +1164,7 @@ function savePNG (file) {
 	//options.includeProfile = false;
 	//activeDocument.exportDocument(file, ExportType.SAVEFORWEB, options);
 
-	// SaveAs sometimes writes a huge amount of XML in the PNG.
+	// SaveAs sometimes writes a huge amount of XML in the PNG. Ignore it or use Oxipng to make smaller PNGs.
 	var options = new PNGSaveOptions();
 	options.compression = 6;
 	activeDocument.saveAs(file, options, true, Extension.LOWERCASE);
@@ -1191,3 +1211,5 @@ function endsWith (str, suffix) {
 function quote (value) {
 	return '"' + value.replace(/"/g, '\\"') + '"';
 }
+
+showSettingsDialog();
