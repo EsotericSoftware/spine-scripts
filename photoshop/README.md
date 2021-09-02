@@ -48,7 +48,9 @@ It can be helpful to create a Photoshop action that runs the script. A function 
 
 ## Origin
 
-The Photoshop ruler origin corresponds to 0,0 in Spine, allowing you to constrol the position of your skeleton in Spine.
+The Photoshop ruler origin corresponds to 0,0 in Spine, allowing you to control the position of your skeleton in Spine.
+
+Photoshop may reset your ruler position when you close your PSD. We suggest creating guides where you want the ruler so you can easily it to that exact position.
 
 ## Tags
 
