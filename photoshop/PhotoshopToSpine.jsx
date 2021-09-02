@@ -13,9 +13,9 @@ app.bringToFront();
 //     * Neither the name of Esoteric Software nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-var scriptVersion = 6.13; // This is incremented every time the script is modified, so you know if you have the latest.
+var scriptVersion = 7.00; // This is incremented every time the script is modified, so you know if you have the latest.
 
-var cs2 = parseInt(app.version) < 10;
+var cs2 = parseInt(app.version) < 10, cID = charIDToTypeID, sID = stringIDToTypeID;
 
 var originalDoc;
 try {
@@ -35,7 +35,7 @@ var defaultSettings = {
 };
 var settings = loadSettings();
 
-var progress, cancel, errors, topLayer;
+var progress, cancel, errors;
 function run () {
 	errors = [];
 	showProgressDialog();
@@ -83,19 +83,21 @@ function run () {
 	rasterizeAll();
 
 	// Add a history item to prevent layer visibility from changing by the active layer being reset to the top.
-	topLayer = activeDocument.artLayers.add();
-	topLayer.name = "Collecting layers";
-	setProgress(0, "Collecting layers...");
+	var topLayer = activeDocument.artLayers.add();
+	topLayer.name = "Processing layers...";
+	setProgress(0, "Processing layers...");
 
 	// Collect and hide layers.
+	var rootLayers = [];
+	collectLayers(activeDocument.hasBackgroundLayer ? 0 : 1, getLayerCount() - 1, null, rootLayers);
 	var layers = [];
-	collectLayers(activeDocument.layers, 1, layers); // 1 to skip first layer, added above.
+	processLayers(rootLayers, layers);
 
 	// Add a history item to prevent layer visibility from changing by restoreHistory.
 	topLayer.remove();
 	topLayer = activeDocument.artLayers.add();
-	topLayer.name = "Processing layers";
-	setProgress(0, "Processing layers...");
+	topLayer.name = "Writing images...";
+	setProgress(0, "Writing images...");
 
 	// Store the bones, slot names, and layers for each skin.
 	var bones = { _root: { name: "root", x: 0, y: 0, children: [] } };
@@ -107,7 +109,7 @@ function run () {
 	for (var i = 0, n = layers.length; i < n; i++) {
 		if (cancel) return;
 		var layer = layers[i];
-		if (layer.kind != LayerKind.NORMAL && !isGroup(layer)) continue;
+		if (!layer.normal && !layer.isGroup) continue;
 
 		var name = stripTags(layer.name).replace(/.png$/, "");
 		name = name.replace(/[\\:"*?<>|]/g, "").replace(/^\.+$/, "").replace(/^__drag$/, ""); // Illegal.
@@ -116,14 +118,14 @@ function run () {
 			error("Layer name is not a valid attachment name:\n\n" + layer.name);
 			continue;
 		}
-		var folderPath = folders(layer, "");
+		var folderPath = layer.folders("");
 		if (startsWith(name, "/")) {
 			name = name.substring(1);
 			layer.attachmentName = name;
 		} else
 			layer.attachmentName = folderPath + name;
 
-		layer.attachmentPath = findTagValue(layer, "path:");
+		layer.attachmentPath = layer.findTagValue("path:");
 		if (!layer.attachmentPath)
 			layer.attachmentPath = layer.attachmentName;
 		else if (startsWith(layer.attachmentPath, "/"))
@@ -131,48 +133,47 @@ function run () {
 		else
 			layer.attachmentPath = folderPath + layer.attachmentPath;
 
-		var scale = findTagValue(layer, "scale:");
+		var scale = layer.findTagValue("scale:");
 		if (!scale) scale = 1;
 		layer.scale = parseFloat(scale);
-		if (isNaN(layer.scale)) error("Invalid scale " + scale + ": " + layerPath(layer));
+		if (isNaN(layer.scale)) error("Invalid scale " + scale + ": " + layer.path());
 
 		var bone = null;
-		var boneLayer = findTagLayer(layer, "bone");
+		var boneLayer = layer.findTagLayer("bone");
 		if (boneLayer) {
-			var parent = getParentBone(boneLayer, bones);
-			var boneName = findTagValue(boneLayer, "bone");
+			var parent = boneLayer.getParentBone(bones);
+			var boneName = boneLayer.findTagValue("bone");
 			bone = get(bones, boneName);
 			if (bone) {
 				if (parent != bone.parent) {
 					error("Multiple layers for the \"" + boneName + "\" bone have different parent bones:\n\n"
-						+ layerPath(bone.layer) + "\n"
-						+ layerPath(boneLayer));
+						+ bone.layer.path() + "\n"
+						+ boneLayer.path());
 					continue;
 				}
 			} else {
 				set(bones, boneName, bone = { name: boneName, parent: parent, children: [], layer: boneLayer });
 				parent.children.push(bone);
 			}
-			var bounds = layer.bounds, x = bounds[0].as("px"), y = bounds[1].as("px");
-			bone.x = x * settings.scale - settings.padding;
-			bone.x += (bounds[2].as("px") - x) * settings.scale / 2 + settings.padding;
-			bone.y = (activeDocument.height.as("px") - y) * settings.scale + settings.padding;
-			bone.y -= (bounds[3].as("px") - y) * settings.scale / 2 + settings.padding;
+			bone.x = layer.left * settings.scale - settings.padding;
+			bone.x += layer.width * settings.scale / 2 + settings.padding;
+			bone.y = layer.bottom * settings.scale + settings.padding;
+			bone.y -= layer.height * settings.scale / 2 + settings.padding;
 			// Make relative to the Photoshop document ruler origin.
 			bone.x -= xOffSet * settings.scale;
 			bone.y -= (activeDocument.height.as("px") - yOffSet) * settings.scale;
 		}
 
-		var skinName = findTagValue(layer, "skin");
+		var skinName = layer.findTagValue("skin");
 		if (skinName && skinName.toLowerCase() == "default") {
-			error("The skin name \"default\" is reserved: " + layerPath(layer) + "\nPlease use a different name.");
+			error("The skin name \"default\" is reserved: " + layer.path() + "\nPlease use a different name.");
 			continue;
 		}
 		if (!skinName) skinName = "default";
 		layer.skinName = skinName;
 		layer.placeholderName = skinName == "default" ? layer.attachmentName : name;
 
-		layer.slotName = findTagValue(layer, "slot") || name;
+		layer.slotName = layer.findTagValue("slot") || name;
 		var slot = get(slots, layer.slotName);
 		if (!slot) {
 			slotsCount++;
@@ -184,11 +185,11 @@ function run () {
 			});
 		} else if (!slot.attachment && layer.wasVisible)
 			slot.attachment = layer.placeholderName;
-		if (layer.blendMode == BlendMode.LINEARDODGE)
+		if (layer.blendMode == "linearDodge")
 			slot.blend = "additive";
-		else if (layer.blendMode == BlendMode.MULTIPLY)
+		else if (layer.blendMode == "multiply")
 			slot.blend = "multiply";
-		else if (layer.blendMode == BlendMode.SCREEN)
+		else if (layer.blendMode == "screen")
 			slot.blend = "screen";
 
 		var placeholders = get(slot.placeholders, skinName);
@@ -222,7 +223,7 @@ function run () {
 		var message = "Multiple layers for the \"" + layers[0].skinName + "\" skin in the \"" + layers[0].slotName
 			+ "\" slot have the same name \"" + layers[0].placeholderName + "\":\n";
 		for (var i = 0, n = layers.length; i < n; i++)
-			message += "\n" + layerPath(layers[i]);
+			message += "\n" + layers[i].path();
 		error(message + "\n\nRename or use the [ignore] tag for these layers.");
 	}
 
@@ -257,7 +258,7 @@ function run () {
 		var layers = slotDuplicates[slotName];
 		var message = "Multiple layers for the \"" + layers[0].slotName + "\" slot have the same name \"" + layers[0].placeholderName + "\":\n";
 		for (var i = 0, n = layers.length; i < n; i++)
-			message += "\n" + layerPath(layers[i]);
+			message += "\n" + layers[i].path();
 		error(message + "\n\nRename or use the [ignore] tag for these layers.");
 	}
 
@@ -314,36 +315,33 @@ function run () {
 			var jsonSlot = "";
 			for (var i = skinLayers.length - 1; i >= 0; i--) {
 				var layer = skinLayers[i];
-				layer.visible = true;
+				layer.setVisible(true);
 
 				if (cancel) return;
 				setProgress(++layerCount / totalLayerCount, "Layer: " + trim(layer.name));
 
 				var attachmentName = layer.attachmentName, attachmentPath = layer.attachmentPath, placeholderName = layer.placeholderName;
-				var isBackgroundLayer = layer.isBackgroundLayer;
 				var scale = layer.scale;
 
-				activeDocument.activeLayer = layer;
-				if (isGroup(layer)) {
-					try {
-						layer = layer.merge();
-					} catch (ignored) {}
+				if (layer.isGroup) {
+					layer.select();
+					mergeDown();
+					layer = new Layer(layer.id, layer.parent);
 				}
+				layer.rasterizeStyles();
 
-				rasterizeStyles(layer);
-
-				var bounds = layer.bounds, x = bounds[0].as("px"), y = bounds[1].as("px"), x2 = bounds[2].as("px"), y2 = bounds[3].as("px");
-				var width = x2 - x, height = y2 - y;
+				var width = layer.width, height = layer.height;
 				if (!width || !height) {
-					deleteLayer(layer, true);
+					layer.deleteLayer();
 					continue;
 				}
 				slot.attachments = true;
 
 				if (writeImages) storeHistory();
 
+				var x = layer.left, y = layer.top;
 				if (settings.trimWhitespace) {
-					if (writeImages) activeDocument.crop([x - xOffSet, y - yOffSet, x2 - xOffSet, y2 - yOffSet], 0, width, height);
+					if (writeImages) activeDocument.crop([x - xOffSet, y - yOffSet, layer.right - xOffSet, layer.bottom - yOffSet], 0, width, height);
 					x *= settings.scale;
 					y *= settings.scale;
 				} else {
@@ -366,7 +364,7 @@ function run () {
 					restoreHistory();
 				}
 
-				if (layerCount < totalLayerCount) deleteLayer(layer, true);
+				if (layerCount < totalLayerCount) layer.deleteLayer();
 
 				x += Math.round(width) / 2 - settings.padding;
 				y = activeDocument.height.as("px") - (y + Math.round(height) / 2 - settings.padding);
@@ -669,9 +667,9 @@ function showSettingsDialog () {
 		var rulerUnits = app.preferences.rulerUnits;
 		app.preferences.rulerUnits = Units.PIXELS;
 		try {
-			// var start = new Date().getTime();
+			//var start = new Date().getTime();
 			run();
-			// alert(new Date().getTime() - start);
+			//alert((new Date().getTime() - start) / 1000 + "s");
 		} catch (e) {
 			alert("An unexpected error has occurred:\n\n[line " + e.line + "] " + e.message + "\n\nTo debug, run the PhotoshopToSpine script using Adobe ExtendScript "
 				+ "with \"Debug > Do not break on guarded exceptions\" unchecked.");
@@ -708,7 +706,7 @@ function loadSettings () {
 
 function saveSettings () {
 	if (cs2) return; // No putCustomOptions.
-	var desc = actionDesc();
+	var desc = new ActionDescriptor();
 	for (var key in defaultSettings) {
 		if (!defaultSettings.hasOwnProperty(key)) continue;
 		desc["put" + getOptionType(defaultSettings[key])](sID(key), settings[key]);
@@ -810,46 +808,36 @@ function setProgress (percent, text) {
 
 // PhotoshopToSpine utility:
 
-function actionDesc () {
-	var desc = new ActionDescriptor();
-	desc.putBoolean(sID("preventAbort"), true);
-	desc.putBoolean(sID("suppressLowPriorityEvents"), true);
-	return desc;
+function collectLayers (firstIndex, index, parent, parentLayers) {
+	while (index >= firstIndex) {
+		if (cancel) return -1;
+		var layer = new Layer(getLayerID(index--), parent);
+		if (layer.isGroupEnd) break;
+		parentLayers.push(layer);
+		if (layer.isGroup) index = collectLayers(firstIndex, index, layer, layer.layers);
+	}
+	return index;
 }
 
-function unlock (layer) {
-	if (layer.allLocked) layer.allLocked = false;
-	var layers = layer.layers;
-	if (!layers) return;
-	for (var i = layers.length - 1; i >= 0; i--)
-		unlock(layers[i]);
-}
-
-function deleteLayer (layer, alreadyActive) {
-	unlock(layer);
-	if (!alreadyActive) activeDocument.activeLayer = topLayer;
-	layer.remove();
-}
-
-function collectLayers (parentLayers, skipFirst, collect) {
+function processLayers (parentLayers, collect) {
 	outer:
-	for (var i = parentLayers.length - 1; i >= skipFirst; i--) {
+	for (var i = parentLayers.length - 1; i >= 0; i--) {
 		if (cancel) return;
 		var layer = parentLayers[i];
 		if (settings.ignoreHiddenLayers && !layer.visible) continue;
-		if (settings.ignoreBackground && layer.isBackgroundLayer) {
-			deleteLayer(layer);
+		if (settings.ignoreBackground && layer.isBackground) {
+			layer.deleteLayer();
 			continue;
 		}
-		if (findTagLayer(layer, "ignore")) {
-			deleteLayer(layer);
+		if (layer.findTagLayer("ignore")) {
+			layer.deleteLayer();
 			continue;
 		}
-		var group = isGroup(layer);
-		if (!group && layer.kind != LayerKind.NORMAL) {
-			layer.rasterize(RasterizeType.ENTIRELAYER); // In case rasterizeAll failed.
-			if (layer.kind != LayerKind.NORMAL) {
-				deleteLayer(layer);
+		if (!layer.isGroup && !layer.normal) {
+			layer.rasterize(); // In case rasterizeAll failed.
+			layer.normal = layer.get("layerKind", "Integer") == 1;
+			if (!layer.normal) {
+				layer.deleteLayer();
 				continue;
 			}
 		}
@@ -860,7 +848,7 @@ function collectLayers (parentLayers, skipFirst, collect) {
 			var matches = re.exec(layer.name);
 			if (!matches) break;
 			var tag = matches[1];
-			if (group) {
+			if (layer.isGroup) {
 				if (!isValidGroupTag(tag)) {
 					var message = "Invalid group name:\n\n" + layer.name;
 					if (isValidLayerTag(tag))
@@ -881,27 +869,23 @@ function collectLayers (parentLayers, skipFirst, collect) {
 			}
 		}
 
-		var changeVisibility = layer.kind == LayerKind.NORMAL || group;
+		var changeVisibility = layer.normal || layer.isGroup;
 		if (changeVisibility) {
 			layer.wasVisible = layer.visible;
-			layer.visible = true;
-			if (layer.allLocked) layer.allLocked = false;
+			layer.setVisible(true);
+			layer.setLocked(false);
 		}
 
-		if (group && findTagLayer(layer, "merge")) {
+		if (layer.isGroup && layer.findTagLayer("merge")) {
 			collectGroupMerge(layer);
-			var layers = layer.layers;
-			if (!layers || layers.length == 0) continue;
-		} else {
-			var layers = layer.layers;
-			if (layers && layers.length > 0) {
-				collectLayers(layers, 0, collect);
-				continue;
-			} else if (group)
-				continue;
-		}
+			if (!layer.layers || layer.layers.length == 0) continue;
+		} else if (layer.layers && layer.layers.length > 0) {
+			processLayers(layer.layers, collect);
+			continue;
+		} else if (layer.isGroup)
+			continue;
 
-		if (changeVisibility) layer.visible = false;
+		if (changeVisibility) layer.setVisible(false);
 		collect.push(layer);
 	}
 }
@@ -912,11 +896,10 @@ function collectGroupMerge (parent) {
 	for (var i = parentLayers.length - 1; i >= 0; i--) {
 		var layer = parentLayers[i];
 		if (settings.ignoreHiddenLayers && !layer.visible) continue;
-		if (findTagLayer(layer, "ignore")) {
-			deleteLayer(layer);
+		if (layer.findTagLayer("ignore")) {
+			layer.deleteLayer();
 			continue;
 		}
-
 		collectGroupMerge(layer);
 	}
 }
@@ -943,44 +926,8 @@ function isValidLayerTag (tag) {
 	return false;
 }
 
-function isGroup (layer) {
-	return layer.typename == "LayerSet";
-}
-
 function stripTags (name) {
 	return trim(name.replace(/\[[^\]]+\]/g, ""));
-}
-
-function findTagLayer (layer, tag) {
-	var groupTag = isValidGroupTag(tag), layerTag = isValidLayerTag(tag);
-	if (endsWith(tag, ":")) tag = tag.slice(0, -1);
-	var re = new RegExp("\\[" + tag + "(:[^\\]]+)?\\]", "i");
-	while (layer) {
-		var group = isGroup(layer);
-		if (((group && groupTag) || (!group && layerTag)) && re.exec(layer.name)) return layer;
-		layer = layer.parent;
-	}
-	return null;
-}
-
-function findTagValue (layer, tag) {
-	layer = findTagLayer(layer, tag);
-	if (!layer) return null;
-	if (endsWith(tag, ":")) tag = tag.slice(0, -1);
-	var matches = new RegExp("\\[" + tag + ":([^\\]]+)\\]", "i").exec(layer.name);
-	if (matches && matches.length) return trim(matches[1]);
-	return stripTags(layer.name);
-}
-
-function getParentBone (boneLayer, bones) {
-	var parentName = findTagValue(boneLayer.parent, "bone") || "root";
-	var parent = get(bones, parentName);
-	if (!parent) { // Parent bone group with no attachment layers.
-		var parentParent = getParentBone(boneLayer.parent, bones);
-		set(bones, parentName, parent = { name: parentName, x: 0, y: 0, parent: parentParent, children: [], layer: boneLayer.parent });
-		parentParent.children.push(parent);
-	}
-	return parent;
 }
 
 function jsonPath (jsonPath) {
@@ -991,31 +938,6 @@ function jsonPath (jsonPath) {
 	} 
 	var name = decodeURI(originalDoc.name);
 	return absolutePath(jsonPath) + name.substring(0, name.indexOf(".")) + ".json";
-}
-
-var foldersRE = new RegExp("\\[(folder|skin)(:[^\\]]+)?\\]", "i");
-function folders (layer, path) {
-	while (layer) {
-		var matches = foldersRE.exec(layer.name);
-		if (matches) {
-			var folder = findTagValue(layer, matches[1]);
-			if (matches[1] == "skin" && folder == "default") return folders(layer.parent, path);
-			if (startsWith(folder, "/")) return folder + "/" + path;
-			return folders(layer.parent, folder + "/" + path);
-		}
-		layer = layer.parent;
-	}
-	return path;
-}
-
-function layerPath (layer) {
-	if (!layer) return "";
-	var path = layer.name;
-	while (true) {
-		layer = layer.parent
-		if (!layer || layer == activeDocument) return path;
-		path = layer.name + "/" + path;
-	}
 }
 
 function error (message) {
@@ -1055,8 +977,7 @@ function rulerOrigin (axis) {
 	var ref = new ActionReference();
 	ref.putProperty(cID("Prpr"), key);
 	ref.putEnumerated(cID("Dcmn"), cID("Ordn"), cID("Trgt")); 
-	var result = executeActionGet(ref);
-	return result.getInteger(key) >> 16;
+	return executeActionGet(ref).getInteger(key) >> 16;
 }
 
 // Seems to not be available when the document has >= 500 layers.
@@ -1066,19 +987,22 @@ function rasterizeAll () {
 	} catch (ignored) {}
 }
 
-// Assumes layer is active.
-function rasterizeStyles (layer) {
-	try {
-		var ref = new ActionReference();
-		ref.putProperty(cID("Prpr"), sID("layerEffects"));
-		ref.putEnumerated(cID("Lyr "), cID("Ordn"), cID("Trgt"));
-		if (executeActionGet(ref).hasKey(sID("layerEffects"))) {
-			var desc = actionDesc();
-			desc.putReference(cID("null"), ref);
-			desc.putEnumerated(cID("What"), sID("rasterizeItem"), sID("layerStyle"));
-			executeAction(sID("rasterizeLayer"), desc, DialogModes.NO);
-		}
-	} catch (ignored) {}
+// Layer must be selected.
+function newLayerBelow (name) {
+	var ref = new ActionReference();
+	ref.putClass(cID("Lyr "));
+	var desc2 = new ActionDescriptor();
+	desc2.putString(cID("Nm  "), name);
+	var desc1 = new ActionDescriptor();
+	desc1.putReference(cID("null"), ref);
+	desc1.putBoolean(sID("below"), true);
+	desc1.putObject(cID("Usng"), cID("Lyr "), desc2);
+	executeAction(cID("Mk  "), desc1, DialogModes.NO);
+}
+
+// Layer must be selected.
+function mergeDown () {
+	executeAction(cID("Mrg2"), undefined, DialogModes.NO);
 }
 
 function scaleImage (scale) {
@@ -1126,28 +1050,20 @@ function absolutePath (path) {
 	return path;
 }
 
-function cID (id) {
-	return app.charIDToTypeID(id);
-}
-
-function sID (id) {
-	return app.stringIDToTypeID(id);
-}
-
 function bgColor (control, r, g, b) {
 	control.graphics.backgroundColor = control.graphics.newBrush(control.graphics.BrushType.SOLID_COLOR, [r, g, b]);
 }
 
 function deselectLayers () {
-	var desc = actionDesc();
 	var ref = new ActionReference();
 	ref.putEnumerated(cID("Lyr "), cID("Ordn"), cID("Trgt"));
+	var desc = new ActionDescriptor();
 	desc.putReference(cID("null"), ref);
 	executeAction(sID("selectNoLayers"), desc, DialogModes.NO);
 }
 
 function convertToRGB () {
-	var desc = actionDesc();
+	var desc = new ActionDescriptor();
 	desc.putClass(cID("T   "), cID("RGBM"));
 	desc.putBoolean(cID("Mrge"), false);
 	desc.putBoolean(cID("Rstr"), true);
@@ -1169,6 +1085,208 @@ function savePNG (file) {
 	options.compression = 6;
 	activeDocument.saveAs(file, options, true, Extension.LOWERCASE);
 }
+
+function getLayerCount () {
+	var ref = new ActionReference();
+	ref.putProperty(cID("Prpr"), sID("numberOfLayers"));
+	ref.putEnumerated(cID("Dcmn"), cID("Ordn"), cID("Trgt"));
+	return executeActionGet(ref).getInteger(sID("numberOfLayers"));
+}
+
+function getLayerID (index) {
+	var ref = new ActionReference();
+	ref.putProperty(cID("Prpr"), sID("layerID"));
+	ref.putIndex(cID("Lyr "), index);
+	return executeActionGet(ref).getInteger(sID("layerID"));
+}
+
+// Layer class.
+
+function Layer (id, parent) {
+	this.id = id;
+	this.parent = parent;
+
+	this.name = this.get("name", "String");
+
+	var type = typeIDToStringID(this.get("layerSection", "EnumerationValue"));
+	this.isGroupEnd = type == "layerSectionEnd";
+	if (this.isGroupEnd) return;
+	this.isGroup = type == "layerSectionStart";
+	this.isLayer = type == "layerSectionContent";
+
+	this.visible = this.get("visible", "Boolean");
+	this.background = this.get("background", "Boolean");
+	this.locked = this.get("layerLocking", "ObjectValue").getBoolean(sID("protectAll"));
+	this.normal = this.get("layerKind", "Integer") == 1;
+	this.blendMode = typeIDToStringID(this.get("mode", "EnumerationValue"));
+
+	var bounds = this.get("bounds", "ObjectValue");
+	this.top = bounds.getDouble(sID("top"));
+	this.left = bounds.getDouble(sID("left"));
+	this.bottom = bounds.getDouble(sID("bottom"));
+	this.right = bounds.getDouble(sID("right"));
+	this.width = bounds.getDouble(sID("width"));
+	this.height = bounds.getDouble(sID("height"));
+
+	if (this.isGroup) this.layers = [];
+}
+
+Layer.prototype.get = function (name, type) {
+	var id = sID(name);
+	var ref = new ActionReference();
+	ref.putProperty(cID("Prpr"), id);
+	ref.putIdentifier(cID("Lyr "), this.id);
+	try {
+		return executeActionGet(ref)["get" + type](id);
+	} catch (e) {
+		e.message = "Unable to get layer " + this + " property: " + name + "\n" + e.message;
+		throw e;
+	}
+};
+
+Layer.prototype.setVisible = function (visible) {
+	if (this.visible == visible) return;
+	this.visible = visible;
+	var ref = new ActionReference();
+	ref.putIdentifier(cID("Lyr "), this.id);
+	var desc = new ActionDescriptor();
+	desc.putReference(cID("null"), ref);
+	executeAction(cID(visible ? "Shw " : "Hd  "), desc, DialogModes.NO);
+};
+
+Layer.prototype.setLocked = function (locked) {
+	if (this.locked == locked) return;
+	this.locked = locked;
+	var desc1 = new ActionDescriptor();
+	var ref = new ActionReference();
+	ref.putIdentifier(cID("Lyr "), this.id);
+	desc1.putReference(cID("null"), ref);
+	var desc2 = new ActionDescriptor();
+	desc2.putBoolean(sID("protectNone"), true);
+	desc1.putObject(sID("layerLocking"), sID("layerLocking"), desc2);
+	executeAction(sID("applyLocking"), desc1, DialogModes.NO);
+};
+
+Layer.prototype.unlock = function () {
+	this.setLocked(false);
+	if (!this.layers) return;
+	for (var i = this.layers.length - 1; i >= 0; i--)
+		this.layers[i].unlock();
+};
+
+Layer.prototype.deleteLayer = function () {
+	this.unlock();
+	var ref = new ActionReference();
+	ref.putIdentifier(cID("Lyr "), this.id);
+	var desc = new ActionDescriptor();
+	desc.putReference(cID("null"), ref);
+	executeAction(cID("Dlt "), desc, DialogModes.NO);
+};
+
+Layer.prototype.rasterize = function () {
+	var ref = new ActionReference();
+	ref.putIdentifier(cID("Lyr "), this.id);
+	var desc = new ActionDescriptor();
+	desc.putReference(cID("null"), ref);
+	executeAction(sID("rasterizeLayer"), desc, DialogModes.NO);
+};
+
+Layer.prototype.rasterizeStyles = function () {
+	var ref = new ActionReference();
+	ref.putProperty(cID("Prpr"), sID("layerEffects"));
+	ref.putIdentifier(cID("Lyr "), this.id);
+	if (executeActionGet(ref).hasKey(sID("layerEffects"))) {
+		this.select();
+		newLayerBelow(this.name);
+		this.select(true);
+		mergeDown();
+
+		// Rastering styles may not give the desired results like merge down.
+		//var ref = new ActionReference();
+		//ref.putProperty(cID("Prpr"), sID("layerEffects"));
+		//ref.putIdentifier(cID("Lyr "), this.id);
+		//if (executeActionGet(ref).hasKey(sID("layerEffects"))) {
+		//	var desc = new ActionDescriptor();
+		//	desc.putReference(cID("null"), ref);
+		//	desc.putEnumerated(cID("What"), sID("rasterizeItem"), sID("layerStyle"));
+		//	executeAction(sID("rasterizeLayer"), desc, DialogModes.NO);
+		//}
+	}
+};
+
+Layer.prototype.select = function (add) {
+	var ref = new ActionReference();
+	ref.putIdentifier(cID("Lyr "), this.id);
+	var desc = new ActionDescriptor();
+	desc.putReference(cID("null"), ref);
+	if (add) desc.putEnumerated(sID("selectionModifier"), sID("selectionModifierType"), sID("addToSelection"));
+	desc.putBoolean(cID("MkVs"), false);
+	executeAction(cID("slct"), desc, DialogModes.NO);
+}
+
+Layer.prototype.findTagLayer = function (tag) {
+	var groupTag = isValidGroupTag(tag), layerTag = isValidLayerTag(tag);
+	if (endsWith(tag, ":")) tag = tag.slice(0, -1);
+	var re = new RegExp("\\[" + tag + "(:[^\\]]+)?\\]", "i");
+	var layer = this;
+	while (layer) {
+		if (((layer.isGroup && groupTag) || (layer.isLayer && layerTag)) && re.exec(layer.name)) return layer;
+		layer = layer.parent;
+	}
+	return null;
+};
+
+Layer.prototype.findTagValue = function (tag) {
+	var layer = this.findTagLayer(tag);
+	if (!layer) return null;
+	if (endsWith(tag, ":")) tag = tag.slice(0, -1);
+	var matches = new RegExp("\\[" + tag + ":([^\\]]+)\\]", "i").exec(layer.name);
+	if (matches && matches.length) return trim(matches[1]);
+	return stripTags(layer.name);
+};
+
+Layer.prototype.getParentBone = function (bones) {
+	var parentName = this.parent ? this.parent.findTagValue("bone") : null;
+	if (!parentName) parentName = "root";
+	var parent = get(bones, parentName);
+	if (!parent) { // Parent bone group with no attachment layers.
+		var parentParent = this.parent.getParentBone(bones);
+		set(bones, parentName, parent = { name: parentName, x: 0, y: 0, parent: parentParent, children: [], layer: this.parent });
+		parentParent.children.push(parent);
+	}
+	return parent;
+};
+
+var foldersRE = new RegExp("\\[(folder|skin)(:[^\\]]+)?\\]", "i");
+Layer.prototype.folders = function (path) {
+	var layer = this;
+	while (layer) {
+		var matches = foldersRE.exec(layer.name);
+		if (matches) {
+			var folder = layer.findTagValue(matches[1]);
+			if (matches[1] == "skin" && folder == "default") return layer.parent.folders(path);
+			path = folder + "/" + path;
+			if (startsWith(folder, "/")) return path;
+			return layer.parent ? layer.parent.folders(folder + "/" + path) : path;
+		}
+		layer = layer.parent;
+	}
+	return path;
+};
+
+Layer.prototype.path = function (path) {
+	var layer = this;
+	var path = layer.name;
+	while (true) {
+		layer = layer.parent;
+		if (!layer) return path;
+		path = layer.name + "/" + path;
+	}
+};
+
+Layer.prototype.toString = function () {
+	return this.name ? this.path() : this.id;
+};
 
 // JavaScript utility:
 
@@ -1194,6 +1312,12 @@ function joinValues (object, glue) {
 		}
 	}
 	return value;
+}
+
+function indexOf (array, value) {
+	for (var i = 0, n = array.length; i < n; i++)
+		if (array[i] == value) return i;
+	return -1;
 }
 
 function trim (value) {
