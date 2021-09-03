@@ -13,11 +13,11 @@ app.bringToFront();
 //     * Neither the name of Esoteric Software nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-var scriptVersion = 7.01; // This is incremented every time the script is modified, so you know if you have the latest.
+var scriptVersion = 7.02; // This is incremented every time the script is modified, so you know if you have the latest.
 
 var cs2 = parseInt(app.version) < 10, cID = charIDToTypeID, sID = stringIDToTypeID;
 
-var originalDoc;
+var originalDoc, settings, progress, cancel, errors;
 try {
 	originalDoc = activeDocument;
 } catch (ignored) {}
@@ -33,12 +33,12 @@ var defaultSettings = {
 	imagesDir: "./images/",
 	jsonPath: "./",
 };
-var settings = loadSettings();
+loadSettings();
 
-var progress, cancel, errors;
 function run () {
+	showProgress();
+
 	errors = [];
-	showProgressDialog();
 
 	// Output dirs.
 	var jsonFile = new File(jsonPath(settings.jsonPath));
@@ -84,21 +84,18 @@ function run () {
 
 	// Add a history item to prevent layer visibility from changing by the active layer being reset to the top.
 	var topLayer = activeDocument.artLayers.add();
-	topLayer.name = "Processing layers...";
-	setProgress(0, "Processing layers...");
+	topLayer.name = "Collecting layers...";
 
 	// Collect and hide layers.
-	var rootLayers = [];
-	var backgroundLayer = hasBackgroundLayer();
-	collectLayers(backgroundLayer ? 0 : 1, getLayerCount() - 1, null, rootLayers);
-	var layers = [];
-	processLayers(rootLayers, layers);
-
-	// Add a history item to prevent layer visibility from changing by restoreHistory.
-	topLayer.remove();
-	topLayer = activeDocument.artLayers.add();
-	topLayer.name = "Writing images...";
-	setProgress(0, "Writing images...");
+	var rootLayers = [], layers = [];
+	var context = {
+		first: hasBackgroundLayer() ? 0 : 1,
+		index: getLayerCount() - 1,
+		total: 0
+	};
+	initializeLayers(context, null, rootLayers);
+	showProgress("Collecting layers...", context.total);
+	collectLayers(rootLayers, layers);
 
 	// Store the bones, slot names, and layers for each skin.
 	var bones = { _root: { name: "root", x: 0, y: 0, children: [] } };
@@ -139,8 +136,7 @@ function run () {
 		layer.scale = parseFloat(scale);
 		if (isNaN(layer.scale)) error("Invalid scale " + scale + ": " + layer.path());
 
-		var bone = null;
-		var boneLayer = layer.findTagLayer("bone");
+		var bone, boneLayer = layer.findTagLayer("bone");
 		if (boneLayer) {
 			var parent = boneLayer.getParentBone(bones);
 			var boneName = boneLayer.findTagValue("bone");
@@ -298,6 +294,10 @@ function run () {
 		return;
 	}
 
+	// Add a history item to prevent layer visibility from changing by restoreHistory.
+	topLayer.name = "Processing layers...";
+	showProgress("Processing layers...", totalLayerCount);
+
 	// Output skins.
 	var jsonSkins = "", layerCount = 0, writeImages = settings.imagesDir;
 	for (var skinName in skins) {
@@ -315,11 +315,12 @@ function run () {
 
 			var jsonSlot = "";
 			for (var i = skinLayers.length - 1; i >= 0; i--) {
+				layerCount++;
 				var layer = skinLayers[i];
 				layer.setVisible(true);
 
+				incrProgress(layer.name);
 				if (cancel) return;
-				setProgress(++layerCount / totalLayerCount, "Layer: " + trim(layer.name));
 
 				var attachmentName = layer.attachmentName, attachmentPath = layer.attachmentPath, placeholderName = layer.placeholderName;
 				var scale = layer.scale;
@@ -473,7 +474,12 @@ function showSettingsDialog () {
 	}
 
 	// Layout.
-	var dialog = new Window("dialog", "PhotoshopToSpine v" + scriptVersion), group;
+	var dialog, group;
+	try {
+		dialog = new Window("dialog", "PhotoshopToSpine v" + scriptVersion);
+	} catch (e) {
+		throw new Error("\n\nScript is unable to create a Window. Your Photoshop installation may be broken and may need to be reinstalled.\n\n" + e.message);
+	}
 	dialog.alignChildren = "fill";
 
 	try {
@@ -672,6 +678,7 @@ function showSettingsDialog () {
 			run();
 			//alert((new Date().getTime() - start) / 1000 + "s");
 		} catch (e) {
+			if (e.message == "User cancelled the operation") return;
 			alert("An unexpected error has occurred:\n\n[line " + e.line + "] " + e.message + "\n\nTo debug, run the PhotoshopToSpine script using Adobe ExtendScript "
 				+ "with \"Debug > Do not break on guarded exceptions\" unchecked.");
 			debugger;
@@ -687,13 +694,13 @@ function showSettingsDialog () {
 }
 
 function loadSettings () {
-	var options = null;
+	var options;
 	try {
 		options = app.getCustomOptions(sID("settings"));
 	} catch (e) {
 	}
 
-	var settings = {};
+	settings = {};
 	for (var key in defaultSettings) {
 		if (!defaultSettings.hasOwnProperty(key)) continue;
 		var typeID = sID(key);
@@ -702,7 +709,6 @@ function loadSettings () {
 		else
 			settings[key] = defaultSettings[key];
 	}
-	return settings;
 }
 
 function saveSettings () {
@@ -771,60 +777,79 @@ function showHelpDialog () {
 
 // Progress dialog:
 
-function showProgressDialog () {
-	var dialog = new Window("palette", "PhotoshopToSpine - Processing...");
-	dialog.alignChildren = "fill";
-	dialog.orientation = "column";
+function showProgress (title, total) {
+	title = title ? "PhotoshopToSpine - " + title : "PhotoshopToSpine";
+	if (!progress) {
+		var dialog = new Window("palette", title);
+		dialog.alignChildren = "fill";
+		dialog.orientation = "column";
 
-	var message = dialog.add("statictext", undefined, "Initializing...");
+		var message = dialog.add("statictext", undefined, "Initializing...");
 
-	var group = dialog.add("group");
-		var bar = group.add("progressbar");
-		bar.preferredSize = [300, 16];
-		bar.maxvalue = 10000;
-		var cancelButton = group.add("button", undefined, "Cancel");
+		var group = dialog.add("group");
+			var bar = group.add("progressbar");
+			bar.preferredSize = [300, 16];
+			bar.maxvalue = total;
+			bar.value = 1;
+			var cancelButton = group.add("button", undefined, "Cancel");
 
-	cancelButton.onClick = function () {
-		cancel = true;
-		cancelButton.enabled = false;
-		return;
-	};
+		cancelButton.onClick = function () {
+			cancel = true;
+			cancelButton.enabled = false;
+			return;
+		};
 
-	dialog.center();
-	dialog.show();
-	dialog.active = true;
+		dialog.center();
+		dialog.show();
+		dialog.active = true;
 
-	progress = {
-		dialog: dialog,
-		bar: bar,
-		message: message
-	};
+		progress = {
+			dialog: dialog,
+			bar: bar,
+			message: message
+		};
+	} else {
+		progress.dialog.text = title;
+		progress.bar.maxvalue = total;
+	}
+	progress.count = 0;
+	progress.total = total;
+	progress.updateTime = 0;
+	var reset = $.hiresTimer;
 }
 
-function setProgress (percent, text) {
-	progress.bar.value = 10000 * percent;
+function incrProgress (text) {
+	progress.count++;
+	if (progress.count != 1 && progress.count < progress.total) {
+		progress.updateTime += $.hiresTimer;
+		if (progress.updateTime < 500000) return;
+		progress.updateTime = 0;
+	}
+	text = progress.count + " / "+ progress.total + ": " + trim(text);
+	progress.bar.value = progress.count;
 	progress.message.text = text;
 	if (!progress.dialog.active) progress.dialog.active = true;
 }
 
 // PhotoshopToSpine utility:
 
-function collectLayers (firstIndex, index, parent, parentLayers) {
-	while (index >= firstIndex) {
+function initializeLayers (context, parent, parentLayers) {
+	while (context.index >= context.first) {
 		if (cancel) return -1;
-		var layer = new Layer(getLayerID(index--), parent);
+		var layer = new Layer(getLayerID(context.index--), parent);
 		if (layer.isGroupEnd) break;
+		context.total++;
 		parentLayers.push(layer);
-		if (layer.isGroup) index = collectLayers(firstIndex, index, layer, layer.layers);
+		if (layer.isGroup) initializeLayers(context, layer, layer.layers);
 	}
-	return index;
 }
 
-function processLayers (parentLayers, collect) {
+function collectLayers (parentLayers, collect) {
 	outer:
 	for (var i = parentLayers.length - 1; i >= 0; i--) {
 		if (cancel) return;
 		var layer = parentLayers[i];
+		incrProgress(layer.name);
 		if (settings.ignoreHiddenLayers && !layer.visible) continue;
 		if (settings.ignoreBackground && layer.background) {
 			layer.deleteLayer();
@@ -881,7 +906,7 @@ function processLayers (parentLayers, collect) {
 			collectGroupMerge(layer);
 			if (!layer.layers || layer.layers.length == 0) continue;
 		} else if (layer.layers && layer.layers.length > 0) {
-			processLayers(layer.layers, collect);
+			collectLayers(layer.layers, collect);
 			continue;
 		} else if (layer.isGroup)
 			continue;
@@ -1027,8 +1052,8 @@ function scriptDir () {
 	else {
 		try {
 			var error = THROW_ERROR; // Force error which provides the script file name.
-		} catch (ex) {
-			file = ex.fileName;
+		} catch (e) {
+			file = e.fileName;
 		}
 	}
 	return new File(file).parent + "/";
