@@ -13,7 +13,7 @@ app.bringToFront();
 //     * Neither the name of Esoteric Software nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-var scriptVersion = 7.02; // This is incremented every time the script is modified, so you know if you have the latest.
+var scriptVersion = 7.03; // This is incremented every time the script is modified, so you know if you have the latest.
 
 var cs2 = parseInt(app.version) < 10, cID = charIDToTypeID, sID = stringIDToTypeID;
 
@@ -107,7 +107,6 @@ function run () {
 	for (var i = 0, n = layers.length; i < n; i++) {
 		if (cancel) return;
 		var layer = layers[i];
-		if (!layer.normal && !layer.isGroup) continue;
 
 		var name = stripTags(layer.name).replace(/.png$/, "");
 		name = name.replace(/[\\:"*?<>|]/g, "").replace(/^\.+$/, "").replace(/^__drag$/, ""); // Illegal.
@@ -327,7 +326,7 @@ function run () {
 
 				if (layer.isGroup) {
 					layer.select();
-					mergeDown();
+					merge();
 					layer = new Layer(layer.id, layer.parent);
 				}
 				layer.rasterizeStyles();
@@ -546,6 +545,14 @@ function showSettingsDialog () {
 			paddingSlider = settingsGroup.add("slider", undefined, settings.padding, 0, 4);
 		}
 
+	if (cs2) {
+		ignoreHiddenLayersCheckbox.preferredSize.width = 150;
+		ignoreBackgroundCheckbox.preferredSize.width = 150;
+		trimWhitespaceCheckbox.preferredSize.width = 150;
+		writeJsonCheckbox.preferredSize.width = 150;
+		writeTemplateCheckbox.preferredSize.width = 150;
+	}
+
 	var outputPathGroup = dialog.add("panel", undefined, "Output Paths");
 		outputPathGroup.alignChildren = ["fill", ""];
 		outputPathGroup.margins = [10,15,10,10];
@@ -685,6 +692,7 @@ function showSettingsDialog () {
 		} finally {
 			if (activeDocument != originalDoc) activeDocument.close(SaveOptions.DONOTSAVECHANGES);
 			app.preferences.rulerUnits = rulerUnits;
+			if (progress && progress.dialog) progress.dialog.close();
 			dialog.close();
 		}
 	};
@@ -697,8 +705,7 @@ function loadSettings () {
 	var options;
 	try {
 		options = app.getCustomOptions(sID("settings"));
-	} catch (e) {
-	}
+	} catch (ignored) {}
 
 	settings = {};
 	for (var key in defaultSettings) {
@@ -859,10 +866,9 @@ function collectLayers (parentLayers, collect) {
 			layer.deleteLayer();
 			continue;
 		}
-		if (!layer.isGroup && !layer.normal) {
+		if (!layer.isGroup && !layer.isNormal()) {
 			layer.rasterize(); // In case rasterizeAll failed.
-			layer.normal = layer.get("layerKind", "Integer") == 1;
-			if (!layer.normal) {
+			if (!layer.isNormal()) {
 				layer.deleteLayer();
 				continue;
 			}
@@ -895,12 +901,9 @@ function collectLayers (parentLayers, collect) {
 			}
 		}
 
-		var changeVisibility = layer.normal || layer.isGroup;
-		if (changeVisibility) {
-			layer.wasVisible = layer.visible;
-			layer.setVisible(true);
-			layer.setLocked(false);
-		}
+		layer.wasVisible = layer.visible;
+		layer.setVisible(true);
+		layer.setLocked(false);
 
 		if (layer.isGroup && layer.findTagLayer("merge")) {
 			collectGroupMerge(layer);
@@ -911,7 +914,7 @@ function collectLayers (parentLayers, collect) {
 		} else if (layer.isGroup)
 			continue;
 
-		if (changeVisibility) layer.setVisible(false);
+		layer.setVisible(false);
 		collect.push(layer);
 	}
 }
@@ -1027,7 +1030,7 @@ function newLayerBelow (name) {
 }
 
 // Layer must be selected.
-function mergeDown () {
+function merge () {
 	executeAction(cID("Mrg2"), undefined, DialogModes.NO);
 }
 
@@ -1127,9 +1130,58 @@ function getLayerID (index) {
 }
 
 function hasBackgroundLayer () {
-	var ref = new ActionReference ()
-	ref.putEnumerated(sID("document"), sID("ordinal"), sID("targetEnum"));
-	return executeActionGet(ref).getBoolean(sID("hasBackgroundLayer"));
+	try {
+		var ref = new ActionReference ()
+		ref.putEnumerated(sID("document"), sID("ordinal"), sID("targetEnum"));
+		return executeActionGet(ref).getBoolean(sID("hasBackgroundLayer"));
+	} catch (e) { // CS2.
+		try {
+			return activeDocument.backgroundLayer;
+		} catch (ignored) {
+		}
+		return false;
+	}
+}
+
+function typeToMethod (type) {
+	if (type == "DescValueType.ENUMERATEDTYPE") return "EnumerationValue";
+	if (type == "DescValueType.OBJECTTYPE") return "ObjectValue";
+	if (type == "DescValueType.UNITDOUBLE") return "Double";
+	if (type == "DescValueType.INTEGERTYPE") return "Integer";
+	if (type == "DescValueType.STRINGTYPE") return "String";
+	if (type == "DescValueType.BOOLEANTYPE") return "Boolean";
+	if (type == "DescValueType.LISTTYPE") return "List";
+	if (type == "DescValueType.REFERENCETYPE") return "Reference";
+	throw new Error("Unknown type: " + type);
+}
+
+// Example:
+//	var ref = new ActionReference();
+//	ref.putIdentifier(cID("Lyr "), layer.id);
+//	alert(properties(executeActionGet(ref)));
+function properties (object, indent) {
+	if (!indent) indent = 0;
+	var text = "";
+	for (var i = 0, n = object.count; i < n; i++) {
+		var key = object.getKey(i);
+		var type = typeToMethod(object.getType(key));
+		var value = object["get" + type](key);
+		if (type == "EnumerationValue") value = typeIDToStringID(value);
+		else if (type == "ObjectValue") value = "{\n" + properties(value, indent + 1) + "}";
+		else if (type == "List") {
+			var items = "";
+			for (var ii = 0, nn = value.count; ii < nn; ii++) {
+				var itemType = typeToMethod(value.getType(ii));
+				items += properties(value["get" + itemType](ii), indent + 1);
+			}
+			if (items) items = "\n" + items;
+			value = "[" + items + "]";
+		}
+		for (var ii = 0; ii < indent; ii++)
+			text += "  ";
+		text += typeIDToStringID(key) + ": " + value + " (" + type + ")\n";
+	}
+	return text;
 }
 
 // Layer class.
@@ -1149,7 +1201,6 @@ function Layer (id, parent) {
 	this.visible = this.get("visible", "Boolean");
 	this.background = this.get("background", "Boolean");
 	this.locked = this.get("layerLocking", "ObjectValue").getBoolean(sID("protectAll"));
-	this.normal = this.get("layerKind", "Integer") == 1;
 	this.blendMode = typeIDToStringID(this.get("mode", "EnumerationValue"));
 
 	var bounds = this.get("bounds", "ObjectValue");
@@ -1157,24 +1208,40 @@ function Layer (id, parent) {
 	this.left = bounds.getDouble(sID("left"));
 	this.bottom = bounds.getDouble(sID("bottom"));
 	this.right = bounds.getDouble(sID("right"));
-	this.width = bounds.getDouble(sID("width"));
-	this.height = bounds.getDouble(sID("height"));
+	this.width = this.right - this.left;
+	this.height = this.bottom - this.top;
 
 	if (this.isGroup) this.layers = [];
 }
 
 Layer.prototype.get = function (name, type) {
-	var id = sID(name);
+	var property = sID(name);
 	var ref = new ActionReference();
-	ref.putProperty(cID("Prpr"), id);
+	ref.putProperty(cID("Prpr"), property);
 	ref.putIdentifier(cID("Lyr "), this.id);
 	try {
-		return executeActionGet(ref)["get" + type](id);
+		return executeActionGet(ref)["get" + type](property);
 	} catch (e) {
 		e.message = "Unable to get layer " + this + " property: " + name + "\n" + e.message;
 		throw e;
 	}
 };
+
+Layer.prototype.has = function (name) {
+	var property = sID(name);
+	var ref = new ActionReference();
+	ref.putProperty(cID("Prpr"), property);
+	ref.putIdentifier(cID("Lyr "), this.id);
+	try {
+		return executeActionGet(ref).hasKey(property);
+	} catch (ignored) {}
+	return false;
+};
+
+Layer.prototype.isNormal = function () {
+	if (cs2) return !this.has("smartObject");
+	return this.get("layerKind", "Integer") == 1;
+}
 
 Layer.prototype.setVisible = function (visible) {
 	if (this.visible == visible) return;
@@ -1224,26 +1291,22 @@ Layer.prototype.rasterize = function () {
 };
 
 Layer.prototype.rasterizeStyles = function () {
-	var ref = new ActionReference();
-	ref.putProperty(cID("Prpr"), sID("layerEffects"));
-	ref.putIdentifier(cID("Lyr "), this.id);
-	if (executeActionGet(ref).hasKey(sID("layerEffects"))) {
-		this.select();
-		newLayerBelow(this.name);
-		this.select(true);
-		mergeDown();
+	if (!this.has("layerEffects")) return;
+	this.select();
+	newLayerBelow(this.name);
+	this.select(true);
+	merge();
 
-		// Rastering styles may not give the desired results like merge down.
-		//var ref = new ActionReference();
-		//ref.putProperty(cID("Prpr"), sID("layerEffects"));
-		//ref.putIdentifier(cID("Lyr "), this.id);
-		//if (executeActionGet(ref).hasKey(sID("layerEffects"))) {
-		//	var desc = new ActionDescriptor();
-		//	desc.putReference(cID("null"), ref);
-		//	desc.putEnumerated(cID("What"), sID("rasterizeItem"), sID("layerStyle"));
-		//	executeAction(sID("rasterizeLayer"), desc, DialogModes.NO);
-		//}
-	}
+	// Rasterizing styles may not give the desired results in all cases, merge does.
+	//var ref = new ActionReference();
+	//ref.putProperty(cID("Prpr"), sID("layerEffects"));
+	//ref.putIdentifier(cID("Lyr "), this.id);
+	//if (executeActionGet(ref).hasKey(sID("layerEffects"))) {
+	//	var desc = new ActionDescriptor();
+	//	desc.putReference(cID("null"), ref);
+	//	desc.putEnumerated(cID("What"), sID("rasterizeItem"), sID("layerStyle"));
+	//	executeAction(sID("rasterizeLayer"), desc, DialogModes.NO);
+	//}
 };
 
 Layer.prototype.select = function (add) {
