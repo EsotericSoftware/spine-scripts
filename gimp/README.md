@@ -13,6 +13,8 @@
 
 ![](http://n4te.com/x/262-Ht5T.png)
 * Choose any plugin directory which has a green circle when selected and move the `GimpToSpine.py` script file to that directory.
+* Unix (Linux, Mac) users need to set the executable flag on the GimpToSpine.py file (e.g. via `chmod +x GimpToSpine.py`)
+* Users having installed GIMP via flatpak may find the plug-ins folder at `/var/lib/flatpak/app/org.gimp.GIMP/current/active/files/lib/gimp/2.0/plug-ins`
 * Restart GIMP.
 
 ## Usage
