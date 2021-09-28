@@ -61,7 +61,7 @@ Tags in square brackets can be used in layer and group names to customize the ou
 * `[slot]` or `[slot:name]`  Layers are placed in a slot.
 * `[skin]` or `[skin:name]`  Layers are placed in a skin. Skin layer images are output in a subfolder for the skin.
 * `[scale:number]`  Layers are scaled. Their attachments are scaled inversely, so they appear the same size in Spine.
-* `[folder]` or `[folder:name]`  Layers images are output in a subfolder. Folder groups can be nested.
+* `[folder]` or `[folder:name]`  Layer images are output in a subfolder. Folder groups can be nested.
 * `[ignore]` Layers, groups, and any child groups will not be output.
 
 **Group names:**
@@ -72,6 +72,10 @@ Tags in square brackets can be used in layer and group names to customize the ou
 * `[path:name]` Specifies the image file name for the layer, if it needs to be different from the attachment name. Can be used on a group with `[merge]`.
 
 If a layer name, folder name, or path name starts with `/` then parent layers won't affect the name.
+
+## Skin folders
+
+If a skin name contains forward slashes (`/`) then the skin will appear within folders in Spine. For example, `a/b/skin` will show in Spine as folders `a` and `b` with a skin named `skin`.
 
 ## Blending modes
 

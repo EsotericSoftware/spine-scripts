@@ -761,7 +761,7 @@ function showHelpDialog () {
 		+ "•  [slot] or [slot:name]  Layers are placed in a slot.\n"
 		+ "•  [skin] or [skin:name]  Layers are placed in a skin. Skin layer images are output in a subfolder for the skin.\n"
 		+ "•  [scale:number]  Layers are scaled. Their attachments are scaled inversely, so they appear the same size in Spine.\n"
-		+ "•  [folder] or [folder:name]  Layers images are output in a subfolder. Folder groups can be nested.\n"
+		+ "•  [folder] or [folder:name]  Layer images are output in a subfolder. Folder groups can be nested.\n"
 		+ "•  [ignore]  Layers, groups, and any child groups will not be output.\n"
 		+ "\n"
 		+ "Group names:\n"
