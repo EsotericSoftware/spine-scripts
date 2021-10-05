@@ -14,7 +14,7 @@ To see the Spine logo on the dialog, you may optionally click [logo.png](https:/
 
 ## Install
 
-Navigate to the Photoshop installation folder, then choose the folder `Presents`, then `Scripts`. On Windows the path is likely similar to this:
+Navigate to the Photoshop installation folder, then choose the folder `Presets`, then `Scripts`. On Windows the path is likely similar to this:
 ```
 C:\Program Files\Adobe\Adobe Photoshop CC 2019\Presets\Scripts
 ```
@@ -48,7 +48,9 @@ It can be helpful to create a Photoshop action that runs the script. A function 
 
 ## Origin
 
-The Photoshop ruler origin corresponds to 0,0 in Spine, allowing you to constrol the position of your skeleton in Spine.
+The Photoshop ruler origin corresponds to 0,0 in Spine, allowing you to control the position of your skeleton in Spine.
+
+Photoshop may reset your ruler position when you close your PSD. We suggest creating guides where you want the ruler so you can easily it to that exact position.
 
 ## Tags
 
@@ -58,7 +60,8 @@ Tags in square brackets can be used in layer and group names to customize the ou
 * `[bone]` or `[bone:name]`  Layers, slots, and bones are placed under a bone. The bone is created at the center of a visible layer. Bone groups can be nested.
 * `[slot]` or `[slot:name]`  Layers are placed in a slot.
 * `[skin]` or `[skin:name]`  Layers are placed in a skin. Skin layer images are output in a subfolder for the skin.
-* `[folder]` or `[folder:name]`  Layers images are output in a subfolder. Folder groups can be nested.
+* `[scale:number]`  Layers are scaled. Their attachments are scaled inversely, so they appear the same size in Spine.
+* `[folder]` or `[folder:name]`  Layer images are output in a subfolder. Folder groups can be nested.
 * `[ignore]` Layers, groups, and any child groups will not be output.
 
 **Group names:**
@@ -69,6 +72,10 @@ Tags in square brackets can be used in layer and group names to customize the ou
 * `[path:name]` Specifies the image file name for the layer, if it needs to be different from the attachment name. Can be used on a group with `[merge]`.
 
 If a layer name, folder name, or path name starts with `/` then parent layers won't affect the name.
+
+## Skin folders
+
+If a skin name contains forward slashes (`/`) then the skin will appear within folders in Spine. For example, `a/b/skin` will show in Spine as folders `a` and `b` with a skin named `skin`.
 
 ## Blending modes
 
@@ -99,7 +106,7 @@ Note you will need to repeat this edit if you get a new version of the script.
 
 When the script fails with an error, it can be useful to debug the script to determine which line in the script is failing. A script should never be able to crash Photoshop, no matter what it does, but sometimes Photoshop has bugs and debugging can be used to find which line the in script causes Photoshop to crash.
 
-Debugging requires the [Adobe ExtendScript Toolkit](https://www.adobe.com/products/extendscript-toolkit.htmlESTK). [Older versions](https://www.adobe.com/devnet/scripting/estk.html) are also available. A mirror for version 3.5.0 is available [here](https://esotericsoftware.com/files/AdobeExtendScriptToolkit3.5.0-mul.zip).
+Debugging requires the [Adobe ExtendScript Toolkit](https://www.adobe.com/products/extendscript-toolkit.htmlESTK). [Older versions](https://www.adobe.com/devnet/scripting/estk.html) are also available. Windows mirrors: [3.5](https://esotericsoftware.com/files/AdobeExtendScriptToolkit3.5.0-mul.zip) and [4.0](https://esotericsoftware.com/files/AdobeExtendScriptToolkit4-LS22.exe). macOS mirror: [4.0](https://esotericsoftware.com/files/AdobeExtendScriptToolkit4-LS22.exe)
 
 Run ExtendScript, then check `Debug > Do not break on guarded exceptions`. That means when a script is run, ExtendScript won't stop when an error occurs that the script handles ("guards"). In a few places it is normal that the script tries something, catches any error that occurs, then carries on, so you don't want ExtendScript stopping every time that happens. ExtendScript will still stop if an error occurs that the script doesn't catch.
 

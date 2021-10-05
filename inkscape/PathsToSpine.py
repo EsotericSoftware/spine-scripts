@@ -27,7 +27,6 @@ THE SOFTWARE.
 '''
 
 import os, inkex, simplestyle, simpletransform, simplepath, cubicsuperpath, json
-from string import rstrip
 from math import sqrt
 
 data = {
@@ -40,18 +39,18 @@ data = {
 class path2spine(inkex.Effect):
 	def __init__(self):
 		inkex.Effect.__init__(self)
-		self.OptionParser.add_option("-f", "--filename", action = "store", type = "string", dest = "filename", default = "~/paths.json", help = "File to export")
-		self.OptionParser.add_option("-o", "--own_slot", action = "store", type = "inkbool", dest = "own_slot", default = True, help = "Export each path in its own slot")
-		self.OptionParser.add_option("-s", "--selected_only", action = "store", type = "inkbool", dest = "selected_only", default = True, help = "Export only selected paths")
-		self.OptionParser.add_option("-c", "--corner_type", action = "store", type = "string", dest = "corner_type", default = "curve", help = "Corner type for open paths")
+		self.arg_parser.add_argument("-f", "--filename", action = "store", type = str, dest = "filename", default = "~/paths.json", help = "File to export")
+		self.arg_parser.add_argument("-o", "--own_slot", action = "store", type = inkex.Boolean, dest = "own_slot", default = True, help = "Export each path in its own slot")
+		self.arg_parser.add_argument("-s", "--selected_only", action = "store", type = inkex.Boolean, dest = "selected_only", default = True, help = "Export only selected paths")
+		self.arg_parser.add_argument("-c", "--corner_type", action = "store", type = str, dest = "corner_type", default = "curve", help = "Corner type for open paths")
 
 	def effect(self):
 		self.filename = self.options.filename
 		self.own_slot = self.options.own_slot
 		self.selected_only = self.options.selected_only
 		self.corner_type = self.options.corner_type
-		self.hw = self.unittouu(self.getDocumentWidth()) / 2
-		self.hh = self.unittouu(self.getDocumentHeight()) / 2
+		self.hw = self.svg.unittouu(self.svg.width) / 2
+		self.hh = self.svg.unittouu(self.svg.height) / 2
 
 		if not self.own_slot:
 			data["slots"].append({"name": "paths", "bone": "root"})
@@ -83,9 +82,9 @@ class path2spine(inkex.Effect):
 			data["skins"]["default"]["paths"][name] = subdata
 
 	def get_color(self, node):
-		style = simplestyle.parseStyle(node.get("style"))
+		style = dict(inkex.Style.parse_str("style"))
 		color = None
-		if style.has_key("stroke"):
+		if "stroke" in style:
 			if simplestyle.isColor(style["stroke"]):
 				color = "%02x%02x%02x" % (simplestyle.parseColor(style["stroke"]))
 				if style.has_key("stroke-opacity"):
@@ -221,7 +220,7 @@ class path2spine(inkex.Effect):
 	def composeParents(self, node, m):
 		t = node.get('transform')
 		if t:
-			m = simpletransform.composeTransform(simpletransform.parseTransform(t), m)
+			m = inkex.Transform(inkex.Transform(t).matrix) * inkex.Transform(m)
 		if node.getparent().tag == inkex.addNS('g','svg') or node.getparent().tag == inkex.addNS('a','svg'):
 			m = self.composeParents(node.getparent(), m)
 		return m
@@ -234,25 +233,25 @@ class path2spine(inkex.Effect):
 
 		m2 = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]
 		for t in transforms:
-			m = simpletransform.parseTransform(t)
-			m2 = simpletransform.composeTransform(m2, m)
+			m = inkex.Transform(t).matrix
+			m2 = inkex.Transform(m2) * inkex.Transform(m)
 
-		m = simpletransform.parseTransform(node.get("transform"))
-		m2 = simpletransform.composeTransform(m2, m)
+		m = inkex.Transform(node.get("transform")).matrix
+		m2 = inkex.Transform(m2) * inkex.Transform(m)
 
 
 		color = self.get_color(node)
 
-		path = simplepath.formatPath(simplepath.parsePath(node.get('d')))
+
+		path = str(inkex.Path(inkex.Path(node.get('d')).to_arrays()))
 		subpaths = path.split('M')
 
 		for i in range(1, len(subpaths)):
-			subpaths[i] = 'M ' + rstrip(subpaths[i])
+			subpaths[i] = 'M ' + str.rstrip(subpaths[i])
 			closed = subpaths[i][-1] in ['Z', 'z']
 
-			csp = cubicsuperpath.parsePath(subpaths[i])
-
-			simpletransform.applyTransformToPath(m2, csp)
+			csp = inkex.Path(subpaths[i]).to_arrays()
+			csp = inkex.Path(csp).transform(m2).to_arrays()
 
 			if closed:
 				self.closed2curves(csp)
@@ -297,7 +296,7 @@ class path2spine(inkex.Effect):
 
 	def _main_function(self):
 		if self.selected_only:
-			for id, node in self.selected.iteritems():
+			for id, node in self.svg.selection.items():
 				self.traverse(node, [], [])
 		else:
 			for node in self.document.getroot().iterchildren():
@@ -306,4 +305,4 @@ class path2spine(inkex.Effect):
 		self.save(self.filename)
 
 e = path2spine()
-e.affect()
+e.run()

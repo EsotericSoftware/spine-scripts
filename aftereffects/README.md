@@ -38,7 +38,7 @@ If running the script from the ExtendScript Toolkit, ensure `Do Not Break on Gua
 
 To download, right click [psd_to_spine.jsx](https://github.com/EsotericSoftware/spine-scripts/raw/master/aftereffects/psd_to_spine.jsx) and choose `Save As`.
 
-This script differs from the [PhotoshopToSpine script](https://github.com/EsotericSoftware/spine-scripts/blob/master/photoshop/PhotoshopToSpine.jsx) to work with the new Photoshop CC [image generator](http://blogs.adobe.com/photoshopdotcom/2013/09/introducing-adobe-generator-for-photoshop-cc.html) feature.
+This script differs from the [PhotoshopToSpine script](https://github.com/EsotericSoftware/spine-scripts/blob/master/photoshop/PhotoshopToSpine.jsx) to work with the Photoshop CC image generator feature.
 
 psd_to_spine.jsx only exports layers that have ".png" in their name. Also, a scale can be specified in the layer name. For example, "25% foo.png" will write a PNG that is 25% of the layer size and will add `"scaleX": 4.0, "scaleY": 4.0` to the Spine JSON output.
 

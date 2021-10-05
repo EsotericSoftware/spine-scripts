@@ -13,14 +13,15 @@ app.bringToFront();
 //     * Neither the name of Esoteric Software nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-var scriptVersion = 6.0; // This is incremented every time the script is modified, so you know if you have the latest.
+var scriptVersion = 7.08; // This is incremented every time the script is modified, so you know if you have the latest.
 
-var cs2 = parseInt(app.version) < 10;
+var cs2 = parseInt(app.version) < 10, cID = charIDToTypeID, sID = stringIDToTypeID;
 
-var originalDoc;
+var originalDoc, settings, progress, cancel, errors;
 try {
 	originalDoc = activeDocument;
 } catch (ignored) {}
+var docWidth = activeDocument.width.as("px"), docHeight = activeDocument.height.as("px");
 
 var defaultSettings = {
 	ignoreHiddenLayers: false,
@@ -33,13 +34,12 @@ var defaultSettings = {
 	imagesDir: "./images/",
 	jsonPath: "./",
 };
-var settings = loadSettings();
-showSettingsDialog();
+loadSettings();
 
-var progress, cancel, errors;
 function run () {
+	showProgress();
+
 	errors = [];
-	showProgressDialog();
 
 	// Output dirs.
 	var jsonFile = new File(jsonPath(settings.jsonPath));
@@ -48,7 +48,11 @@ function run () {
 	var imagesFolder = new Folder(imagesDir);
 	imagesFolder.create();
 
-	var origin = rulerOrigin(), xOffSet = origin[0], yOffSet = origin[1];
+	var xOffSet = rulerOrigin("H"), yOffSet = rulerOrigin("V");
+
+	try {
+		deleteDocumentAncestorsMetadata();
+	} catch (ignored) {}
 
 	activeDocument.duplicate();
 	deselectLayers();
@@ -68,7 +72,7 @@ function run () {
 	if (settings.writeTemplate) {
 		if (settings.scale != 1) {
 			storeHistory();
-			scaleImage();
+			scaleImage(settings.scale);
 		}
 
 		var file = new File(imagesDir + "template.png");
@@ -84,27 +88,30 @@ function run () {
 	rasterizeAll();
 
 	// Add a history item to prevent layer visibility from changing by the active layer being reset to the top.
-	activeDocument.artLayers.add();
+	var topLayer = activeDocument.artLayers.add();
+	topLayer.name = "Collecting layers...";
 
 	// Collect and hide layers.
-	var layers = [];
-	collectLayers(activeDocument, layers);
-	var layersCount = layers.length;
-
-	// Add a history item to prevent layer visibility from changing by restoreHistory.
-	activeDocument.artLayers.add();
+	var rootLayers = [], layers = [];
+	var context = {
+		first: hasBackgroundLayer() ? 0 : 1,
+		index: getLayerCount() - 1,
+		total: 0
+	};
+	initializeLayers(context, null, rootLayers);
+	showProgress("Collecting layers...", context.total);
+	collectLayers(rootLayers, layers);
 
 	// Store the bones, slot names, and layers for each skin.
 	var bones = { _root: { name: "root", x: 0, y: 0, children: [] } };
 	var slots = {}, slotsCount = 0;
 	var skins = { _default: [] }, skinsCount = 0;
-	var paths = {};
+	var skinDuplicates = {};
 	var totalLayerCount = 0;
 	outer:
-	for (var i = 0; i < layersCount; i++) {
+	for (var i = 0, n = layers.length; i < n; i++) {
 		if (cancel) return;
 		var layer = layers[i];
-		if (layer.kind != LayerKind.NORMAL && !isGroup(layer)) continue;
 
 		var name = stripTags(layer.name).replace(/.png$/, "");
 		name = name.replace(/[\\:"*?<>|]/g, "").replace(/^\.+$/, "").replace(/^__drag$/, ""); // Illegal.
@@ -113,14 +120,14 @@ function run () {
 			error("Layer name is not a valid attachment name:\n\n" + layer.name);
 			continue;
 		}
-		var folderPath = folders(layer, "");
+		var folderPath = layer.folders("");
 		if (startsWith(name, "/")) {
 			name = name.substring(1);
 			layer.attachmentName = name;
 		} else
 			layer.attachmentName = folderPath + name;
 
-		layer.attachmentPath = findTagValue(layer, "path:");
+		layer.attachmentPath = layer.findTagValue("path:");
 		if (!layer.attachmentPath)
 			layer.attachmentPath = layer.attachmentName;
 		else if (startsWith(layer.attachmentPath, "/"))
@@ -128,70 +135,133 @@ function run () {
 		else
 			layer.attachmentPath = folderPath + layer.attachmentPath;
 
-		var pathLayers = get(paths, layer.attachmentPath);
-		if (!pathLayers) set(paths, layer.attachmentPath, pathLayers = []);
-		pathLayers[pathLayers.length] = layerPath(layer);
+		var scale = layer.findTagValue("scale:");
+		if (!scale) scale = 1;
+		layer.scale = parseFloat(scale);
+		if (isNaN(layer.scale)) error("Invalid scale " + scale + ": " + layer.path());
 
-		var bone = null;
-		var boneLayer = findTagLayer(layer, "bone");
+		var bone = null, boneLayer = layer.findTagLayer("bone");
 		if (boneLayer) {
-			var parent = getParentBone(boneLayer, bones);
-			var boneName = findTagValue(boneLayer, "bone");
+			var parent = boneLayer.getParentBone(bones);
+			var boneName = boneLayer.findTagValue("bone");
 			bone = get(bones, boneName);
 			if (bone) {
 				if (parent != bone.parent) {
 					error("Multiple layers for the \"" + boneName + "\" bone have different parent bones:\n\n"
-						+ layerPath(bone.layer) + "\n"
-						+ layerPath(boneLayer));
+						+ bone.layer.path() + "\n"
+						+ boneLayer.path());
 					continue;
 				}
 			} else {
 				set(bones, boneName, bone = { name: boneName, parent: parent, children: [], layer: boneLayer });
 				parent.children.push(bone);
 			}
-			bone.x = layer.bounds[0].as("px") * settings.scale - settings.padding;
-			bone.x += (layer.bounds[2].as("px") - layer.bounds[0].as("px")) * settings.scale / 2 + settings.padding;
-			bone.y = (activeDocument.height.as("px") - layer.bounds[1].as("px")) * settings.scale + settings.padding;
-			bone.y -= (layer.bounds[3].as("px") - layer.bounds[1].as("px")) * settings.scale / 2 + settings.padding;
+			bone.x = layer.left * settings.scale - settings.padding;
+			bone.x += layer.width * settings.scale / 2 + settings.padding;
+			bone.y = layer.bottom * settings.scale + settings.padding;
+			bone.y -= layer.height * settings.scale / 2 + settings.padding;
+			bone.y = docHeight - bone.y;
 			// Make relative to the Photoshop document ruler origin.
 			bone.x -= xOffSet * settings.scale;
-			bone.y -= (activeDocument.height.as("px") - yOffSet) * settings.scale;
+			bone.y -= (docHeight - yOffSet) * settings.scale;
 		}
 
-		var skinName = findTagValue(layer, "skin") || "default";
+		var skinName = layer.findTagValue("skin");
+		if (skinName && skinName.toLowerCase() == "default") {
+			error("The skin name \"default\" is reserved: " + layer.path() + "\nPlease use a different name.");
+			continue;
+		}
+		if (!skinName) skinName = "default";
+		layer.skinName = skinName;
 		layer.placeholderName = skinName == "default" ? layer.attachmentName : name;
 
-		layer.slotName = findTagValue(layer, "slot") || layer.attachmentName;
-		if (!get(slots, layer.slotName)) slotsCount++;
-		var slot;
-		set(slots, layer.slotName, slot = { bone: bone, attachment: layer.wasVisible ? layer.placeholderName : null });
-		if (layer.blendMode == BlendMode.LINEARDODGE)
+		layer.slotName = layer.findTagValue("slot") || name;
+		var slot = get(slots, layer.slotName);
+		if (!slot) {
+			slotsCount++;
+			set(slots, layer.slotName, slot = {
+				bone: bone,
+				attachment: layer.wasVisible ? layer.placeholderName : null,
+				placeholders: {},
+				attachments: false
+			});
+		} else if (!slot.attachment && layer.wasVisible)
+			slot.attachment = layer.placeholderName;
+		if (layer.blendMode == "linearDodge")
 			slot.blend = "additive";
-		else if (layer.blendMode == BlendMode.MULTIPLY)
+		else if (layer.blendMode == "multiply")
 			slot.blend = "multiply";
-		else if (layer.blendMode == BlendMode.SCREEN)
+		else if (layer.blendMode == "screen")
 			slot.blend = "screen";
+
+		var placeholders = get(slot.placeholders, skinName);
+		if (!placeholders)
+			set(slot.placeholders, skinName, placeholders = {});
+		else {
+			var existing = get(placeholders, layer.placeholderName);
+			if (existing) { // Skin has duplicate placeholders.
+				var key = layer.slotName + "|^`" + skinName;
+				remove(skinDuplicates, key, existing);
+				add(skinDuplicates, key, existing);
+				add(skinDuplicates, key, layer);
+			}
+		}
+		set(placeholders, layer.placeholderName, layer);
 
 		var skinSlots = get(skins, skinName);
 		if (!skinSlots) {
 			set(skins, skinName, skinSlots = {});
 			skinsCount++;
 		}
-		var skinLayers = get(skinSlots, layer.slotName);
-		if (!skinLayers) set(skinSlots, layer.slotName, skinLayers = []);
-		skinLayers[skinLayers.length] = layer;
+		add(skinSlots, layer.slotName, layer);
 
 		totalLayerCount++;
 	}
 
-	for (var path in paths) {
-		if (!paths.hasOwnProperty(path)) continue;
-		var pathLayers = paths[path];
-		if (pathLayers.length > 1) {
-			error("Multiple layers have the same image file path \"" + path.substring(1) + "\":\n\n"
-				+ joinValues(pathLayers, "\n")
-				+ "\n\nRename or use the [folder], [path:name], or [ignore] tag for these layers.");
+	// Error if a skin has multiple skin placeholders with the same name.
+	for (var key in skinDuplicates) {
+		if (!skinDuplicates.hasOwnProperty(key)) continue;
+		var layers = skinDuplicates[key];
+		var message = "Multiple layers for the \"" + layers[0].skinName + "\" skin in the \"" + layers[0].slotName
+			+ "\" slot have the same name \"" + layers[0].placeholderName + "\":\n";
+		for (var i = 0, n = layers.length; i < n; i++)
+			message += "\n" + layers[i].path();
+		error(message + "\n\nRename or use the [ignore] tag for these layers.");
+	}
+
+	// Error if a skin placeholder has the same name as a default skin attachment.
+	var slotDuplicates = {};
+	for (var slotName in slots) {
+		if (!slots.hasOwnProperty(slotName)) continue;
+		var slot = slots[slotName];
+
+		var defaultPlaceholders = get(slot.placeholders, "default");
+		if (!defaultPlaceholders) continue;
+		for (var skinName in slot.placeholders) {
+			if (!slot.placeholders.hasOwnProperty(skinName)) continue;
+			var placeholders = slot.placeholders[skinName];
+			if (stripName(skinName) == "default") continue;
+
+			for (var placeholderName in placeholders) {
+				if (!placeholders.hasOwnProperty(placeholderName)) continue;
+
+				var existing = get(defaultPlaceholders, stripName(placeholderName));
+				if (existing) {
+					var layer = placeholders[placeholderName];
+					remove(slotDuplicates, layer.slotName, existing);
+					add(slotDuplicates, layer.slotName, existing);
+					add(slotDuplicates, layer.slotName, layer);
+				}
+			}
 		}
+	}
+	for (var slotName in slotDuplicates) {
+		if (!slotDuplicates.hasOwnProperty(slotName)) continue;
+		var layers = slotDuplicates[slotName];
+		var message = "Multiple layers for the \"" + layers[0].slotName + "\" slot have the same name \"" + layers[0].placeholderName + "\":\n";
+		for (var i = 0, n = layers.length; i < n; i++)
+			message += "\n" + layers[i].path();
+		error(message + "\n\nRename or use the [ignore] tag for these layers.");
 	}
 
 	var n = errors.length;
@@ -229,12 +299,117 @@ function run () {
 		return;
 	}
 
+	// Add a history item to prevent layer visibility from changing by restoreHistory.
+	topLayer.name = "Processing layers...";
+	showProgress("Processing layers...", totalLayerCount);
+
+	// Output skins.
+	var jsonSkins = "", layerCount = 0, writeImages = settings.imagesDir;
+	for (var skinName in skins) {
+		if (!skins.hasOwnProperty(skinName)) continue;
+		var skinSlots = skins[skinName];
+		skinName = stripName(skinName);
+
+		var jsonSkin = "";
+		for (var slotName in skinSlots) {
+			if (!skinSlots.hasOwnProperty(slotName)) continue;
+			var slot = slots[slotName];
+			var bone = slot.bone;
+			var skinLayers = skinSlots[slotName];
+			slotName = stripName(slotName);
+
+			var jsonSlot = "";
+			for (var i = skinLayers.length - 1; i >= 0; i--) {
+				layerCount++;
+				var layer = skinLayers[i];
+				layer.setVisible(true);
+
+				incrProgress(layer.name);
+				if (cancel) return;
+
+				var attachmentName = layer.attachmentName, attachmentPath = layer.attachmentPath, placeholderName = layer.placeholderName;
+				var scale = layer.scale;
+
+				if (layer.isGroup) {
+					layer.select();
+					merge();
+					layer = new Layer(layer.id, layer.parent);
+				}
+				layer.rasterizeStyles();
+
+				var width = layer.width, height = layer.height;
+				if (!width || !height) {
+					layer.deleteLayer();
+					continue;
+				}
+				slot.attachments = true;
+
+				if (writeImages) storeHistory();
+
+				var x = layer.left, y = layer.top, docHeightCropped = docHeight;
+				if (settings.trimWhitespace) {
+					if (writeImages) {
+						activeDocument.crop([x - xOffSet, y - yOffSet, layer.right - xOffSet, layer.bottom - yOffSet], 0, width, height);
+						docHeightCropped = height;
+					}
+					x *= settings.scale;
+					y *= settings.scale;
+				} else {
+					x = 0;
+					y = 0;
+					width = docWidth - xOffSet * settings.scale;
+					height = docHeight - yOffSet * settings.scale;
+				}
+				width = width * settings.scale + settings.padding * 2;
+				height = height * settings.scale + settings.padding * 2;
+
+				// Save image.
+				if (writeImages) {
+					scaleImage(settings.scale * scale);
+					if (settings.padding > 0) activeDocument.resizeCanvas(width * scale, height * scale, AnchorPosition.MIDDLECENTER);
+
+					var file = new File(imagesDir + attachmentPath + ".png");
+					file.parent.create();
+					savePNG(file);
+					restoreHistory();
+				}
+
+				if (layerCount < totalLayerCount) layer.deleteLayer();
+
+				x += Math.round(width) / 2 - settings.padding;
+				y = docHeightCropped - (y + Math.round(height) / 2 - settings.padding);
+				width *= scale;
+				height *= scale;
+
+				// Make relative to the Photoshop document ruler origin.
+				x -= xOffSet * settings.scale;
+				y -= docHeightCropped - yOffSet * settings.scale;
+
+				if (bone) { // Make relative to parent bone.
+					x -= bone.x;
+					y -= bone.y;
+				}
+
+				jsonSlot += "\t\t\t" + quote(placeholderName) + ': { ';
+				if (attachmentName != placeholderName) jsonSlot += '"name": ' + quote(attachmentName) + ', ';
+				if (attachmentName != attachmentPath) jsonSlot += '"path": ' + quote(attachmentPath) + ', ';
+				jsonSlot += '"x": ' + x + ', "y": ' + y + ', "width": ' + Math.round(width) + ', "height": ' + Math.round(height);
+				if (scale != 1) jsonSlot += ', "scaleX": ' + (1 / scale) + ', "scaleY": ' + (1 / scale);
+				jsonSlot += ' },\n';
+			}
+			if (jsonSlot) jsonSkin += '\t\t' + quote(slotName) + ': {\n' + jsonSlot.substring(0, jsonSlot.length - 2) + '\n\t\t\},\n';
+		}
+		if (jsonSkin) jsonSkins += '\t"' + skinName + '": {\n' + jsonSkin.substring(0, jsonSkin.length - 2) + '\n\t},\n';
+	}
+
+	activeDocument.close(SaveOptions.DONOTSAVECHANGES);
+
 	// Output skeleton.
 	var json = '{ "skeleton": { "images": "' + imagesDir + '" },\n"bones": [\n';
 
 	// Output bones.
 	function outputBone (bone) {
-		var json = bone.parent ? ",\n" : "";
+		var json = bone.parent ? ',\n' : '';
 		json += '\t{ "name": ' + quote(bone.name);
 		var x = bone.x, y = bone.y;
 		if (bone.parent) {
@@ -263,108 +438,18 @@ function run () {
 		if (cancel) return;
 		if (!slots.hasOwnProperty(slotName)) continue;
 		var slot = slots[slotName];
+		if (!slot.attachments) continue;
 		slotName = stripName(slotName);
 		json += '\t{ "name": ' + quote(slotName) + ', "bone": ' + quote(slot.bone ? slot.bone.name : "root");
 		if (slot.attachment) json += ', "attachment": ' + quote(slot.attachment);
 		if (slot.blend) json += ', "blend": ' + quote(slot.blend);
 		json += ' }';
 		slotIndex++;
-		json += slotIndex < slotsCount ? ",\n" : "\n";
+		json += slotIndex < slotsCount ? ',\n' : '\n';
 	}
-	json += '],\n"skins": {\n';
-
-	// Output skins.
-	var skinIndex = 0, layerCount = 0;
-	for (var skinName in skins) {
-		if (!skins.hasOwnProperty(skinName)) continue;
-		var skinSlots = skins[skinName];
-		skinName = stripName(skinName);
-		json += '\t"' + skinName + '": {\n';
-
-		var skinSlotIndex = 0, skinSlotsCount = countKeys(skinSlots);
-		for (var slotName in skinSlots) {
-			if (!skinSlots.hasOwnProperty(slotName)) continue;
-			var bone = slots[slotName].bone;
-			var skinLayers = skinSlots[slotName];
-			slotName = stripName(slotName);
-
-			json += '\t\t' + quote(slotName) + ': {\n';
-
-			var skinLayerIndex = 0, skinLayersCount = skinLayers.length;
-			for (var i = skinLayersCount - 1; i >= 0; i--) {
-				var layer = skinLayers[i];
-				layer.visible = true;
-
-				if (cancel) return;
-				setProgress(++layerCount / totalLayerCount, trim(layer.name));
-
-				var attachmentName = layer.attachmentName, attachmentPath = layer.attachmentPath, placeholderName = layer.placeholderName;
-				var isBackgroundLayer = layer.isBackgroundLayer;
-
-				if (isGroup(layer)) {
-					activeDocument.activeLayer = layer;
-					try {
-						layer = layer.merge();
-					} catch (ignored) {}
-				}
-
-				rasterizeStyles(layer);
-
-				storeHistory();
-
-				var x = 0, y = 0;
-				if (settings.trimWhitespace) {
-					x = activeDocument.width.as("px") * settings.scale;
-					y = activeDocument.height.as("px") * settings.scale;
-					if (!isBackgroundLayer) activeDocument.trim(TrimType.TRANSPARENT, false, true, true, false);
-					x -= activeDocument.width.as("px") * settings.scale;
-					y -= activeDocument.height.as("px") * settings.scale;
-					if (!isBackgroundLayer) activeDocument.trim(TrimType.TRANSPARENT, true, false, false, true);
-				}
-				var width = activeDocument.width.as("px") * settings.scale + settings.padding * 2;
-				var height = activeDocument.height.as("px") * settings.scale + settings.padding * 2;
-
-				// Save image.
-				if (settings.imagesDir) {
-					if (settings.scale != 1) scaleImage();
-					if (settings.padding > 0) activeDocument.resizeCanvas(width, height, AnchorPosition.MIDDLECENTER);
-
-					var file = new File(imagesDir + attachmentPath + ".png");
-					file.parent.create();
-					savePNG(file);
-				}
-
-				restoreHistory();
-				if (layerCount < totalLayerCount) deleteLayer(layer);
-
-				x += Math.round(width) / 2 - settings.padding;
-				y += Math.round(height) / 2 - settings.padding;
-
-				// Make relative to the Photoshop document ruler origin.
-				x -= xOffSet * settings.scale;
-				y -= (activeDocument.height.as("px") - yOffSet) * settings.scale;
-
-				if (bone) { // Make relative to parent bone.
-					x -= bone.x;
-					y -= bone.y;
-				}
-
-				json += "\t\t\t" + quote(placeholderName) + ': { ';
-				if (attachmentName != placeholderName) json += '"name": ' + quote(attachmentName) + ', ';
-				if (attachmentName != attachmentPath) json += '"path": ' + quote(attachmentPath) + ', ';
-				json += '"x": ' + x + ', "y": ' + y + ', "width": ' + Math.round(width) + ', "height": ' + Math.round(height);
-
-				json += " }" + (++skinLayerIndex < skinLayersCount ? ",\n" : "\n");
-			}
-
-			json += "\t\t\}" + (++skinSlotIndex < skinSlotsCount ? ",\n" : "\n");
-		}
-
-		json += "\t}" + (++skinIndex <= skinsCount ? ",\n" : "\n");
-	}
-	json += '},\n"animations": { "animation": {} }\n}';
-
-	activeDocument.close(SaveOptions.DONOTSAVECHANGES);
+	json += '],\n';
+	if (jsonSkins) json += '"skins": {\n' + jsonSkins.substring(0, jsonSkins.length - 2) + '\n},\n';
+	json += '"animations": { "animation": {} }\n}';
 
 	// Output JSON file.
 	if (settings.writeJson && settings.jsonPath) {
@@ -397,7 +482,12 @@ function showSettingsDialog () {
 	}
 
 	// Layout.
-	var dialog = new Window("dialog", "PhotoshopToSpine v" + scriptVersion), group;
+	var dialog, group;
+	try {
+		dialog = new Window("dialog", "PhotoshopToSpine v" + scriptVersion);
+	} catch (e) {
+		throw new Error("\n\nScript is unable to create a Window. Your Photoshop installation may be broken and may need to be reinstalled.\n\n" + e.message);
+	}
 	dialog.alignChildren = "fill";
 
 	try {
@@ -463,6 +553,14 @@ function showSettingsDialog () {
 				paddingText.preferredSize.width = 50;
 			paddingSlider = settingsGroup.add("slider", undefined, settings.padding, 0, 4);
 		}
+
+	if (cs2) {
+		ignoreHiddenLayersCheckbox.preferredSize.width = 150;
+		ignoreBackgroundCheckbox.preferredSize.width = 150;
+		trimWhitespaceCheckbox.preferredSize.width = 150;
+		writeJsonCheckbox.preferredSize.width = 150;
+		writeTemplateCheckbox.preferredSize.width = 150;
+	}
 
 	var outputPathGroup = dialog.add("panel", undefined, "Output Paths");
 		outputPathGroup.alignChildren = ["fill", ""];
@@ -592,16 +690,18 @@ function showSettingsDialog () {
 		var rulerUnits = app.preferences.rulerUnits;
 		app.preferences.rulerUnits = Units.PIXELS;
 		try {
-			// var start = new Date().getTime();
+			//var start = new Date().getTime();
 			run();
-			// alert(new Date().getTime() - start);
+			//alert((new Date().getTime() - start) / 1000 + "s");
 		} catch (e) {
-			alert("An unexpected error has occurred.\n\nTo debug, run the PhotoshopToSpine script using Adobe ExtendScript "
+			if (e.message == "User cancelled the operation") return;
+			alert("An unexpected error has occurred:\n\n[line " + e.line + "] " + e.message + "\n\nTo debug, run the PhotoshopToSpine script using Adobe ExtendScript "
 				+ "with \"Debug > Do not break on guarded exceptions\" unchecked.");
 			debugger;
 		} finally {
 			if (activeDocument != originalDoc) activeDocument.close(SaveOptions.DONOTSAVECHANGES);
 			app.preferences.rulerUnits = rulerUnits;
+			if (progress && progress.dialog) progress.dialog.close();
 			dialog.close();
 		}
 	};
@@ -611,13 +711,12 @@ function showSettingsDialog () {
 }
 
 function loadSettings () {
-	var options = null;
+	var options;
 	try {
 		options = app.getCustomOptions(sID("settings"));
-	} catch (e) {
-	}
+	} catch (ignored) {}
 
-	var settings = {};
+	settings = {};
 	for (var key in defaultSettings) {
 		if (!defaultSettings.hasOwnProperty(key)) continue;
 		var typeID = sID(key);
@@ -626,17 +725,16 @@ function loadSettings () {
 		else
 			settings[key] = defaultSettings[key];
 	}
-	return settings;
 }
 
 function saveSettings () {
 	if (cs2) return; // No putCustomOptions.
-	var action = new ActionDescriptor();
+	var desc = new ActionDescriptor();
 	for (var key in defaultSettings) {
 		if (!defaultSettings.hasOwnProperty(key)) continue;
-		action["put" + getOptionType(defaultSettings[key])](sID(key), settings[key]);
+		desc["put" + getOptionType(defaultSettings[key])](sID(key), settings[key]);
 	}
-	app.putCustomOptions(sID("settings"), action, true);
+	app.putCustomOptions(sID("settings"), desc, true);
 }
 
 function getOptionType (value) {
@@ -667,7 +765,8 @@ function showHelpDialog () {
 		+ "•  [bone] or [bone:name]  Layers, slots, and bones are placed under a bone. The bone is created at the center of a visible layer. Bone groups can be nested.\n"
 		+ "•  [slot] or [slot:name]  Layers are placed in a slot.\n"
 		+ "•  [skin] or [skin:name]  Layers are placed in a skin. Skin layer images are output in a subfolder for the skin.\n"
-		+ "•  [folder] or [folder:name]  Layers images are output in a subfolder. Folder groups can be nested.\n"
+		+ "•  [scale:number]  Layers are scaled. Their attachments are scaled inversely, so they appear the same size in Spine.\n"
+		+ "•  [folder] or [folder:name]  Layer images are output in a subfolder. Folder groups can be nested.\n"
 		+ "•  [ignore]  Layers, groups, and any child groups will not be output.\n"
 		+ "\n"
 		+ "Group names:\n"
@@ -694,75 +793,94 @@ function showHelpDialog () {
 
 // Progress dialog:
 
-function showProgressDialog () {
-	var dialog = new Window("palette", "PhotoshopToSpine - Processing...");
-	dialog.alignChildren = "fill";
-	dialog.orientation = "column";
+function showProgress (title, total) {
+	title = title ? "PhotoshopToSpine - " + title : "PhotoshopToSpine";
+	if (!progress) {
+		var dialog = new Window("palette", title);
+		dialog.alignChildren = "fill";
+		dialog.orientation = "column";
 
-	var message = dialog.add("statictext", undefined, "Initializing...");
+		var message = dialog.add("statictext", undefined, "Initializing...");
 
-	var group = dialog.add("group");
-		var bar = group.add("progressbar");
-		bar.preferredSize = [300, 16];
-		bar.maxvalue = 10000;
-		var cancelButton = group.add("button", undefined, "Cancel");
+		var group = dialog.add("group");
+			var bar = group.add("progressbar");
+			bar.preferredSize = [300, 16];
+			bar.maxvalue = total;
+			bar.value = 1;
+			var cancelButton = group.add("button", undefined, "Cancel");
 
-	cancelButton.onClick = function () {
-		cancel = true;
-		cancelButton.enabled = false;
-		return;
-	};
+		cancelButton.onClick = function () {
+			cancel = true;
+			cancelButton.enabled = false;
+			return;
+		};
 
-	dialog.center();
-	dialog.show();
-	dialog.active = true;
+		dialog.center();
+		dialog.show();
+		dialog.active = true;
 
-	progress = {
-		dialog: dialog,
-		bar: bar,
-		message: message
-	};
+		progress = {
+			dialog: dialog,
+			bar: bar,
+			message: message
+		};
+	} else {
+		progress.dialog.text = title;
+		progress.bar.maxvalue = total;
+	}
+	progress.count = 0;
+	progress.total = total;
+	progress.updateTime = 0;
+	var reset = $.hiresTimer;
 }
 
-function setProgress (percent, layerName) {
-	progress.bar.value = 10000 * percent;
-	progress.message.text = "Layer: " + layerName;
+function incrProgress (text) {
+	progress.count++;
+	if (progress.count != 1 && progress.count < progress.total) {
+		progress.updateTime += $.hiresTimer;
+		if (progress.updateTime < 500000) return;
+		progress.updateTime = 0;
+	}
+	text = progress.count + " / "+ progress.total + ": " + trim(text);
+	progress.bar.value = progress.count;
+	progress.message.text = text;
 	if (!progress.dialog.active) progress.dialog.active = true;
 }
 
 // PhotoshopToSpine utility:
 
-function unlock (layer) {
-	if (layer.allLocked) layer.allLocked = false;
-	if (!layer.layers) return;
-	for (var i = layer.layers.length - 1; i >= 0; i--)
-		unlock(layer.layers[i]);
+function initializeLayers (context, parent, parentLayers) {
+	while (context.index >= context.first) {
+		if (cancel) return -1;
+		var layer = new Layer(getLayerID(context.index--), parent);
+		if (layer.isGroupEnd) break;
+		context.total++;
+		parentLayers.push(layer);
+		if (layer.isGroup) initializeLayers(context, layer, layer.layers);
+	}
 }
 
-function deleteLayer (layer) {
-	unlock(layer);
-	activeDocument.activeLayer = activeDocument.artLayers[0];
-	layer.remove();
-}
-
-function collectLayers (parent, collect) {
+function collectLayers (parentLayers, collect) {
 	outer:
-	for (var i = parent.layers.length - 1; i >= 0; i--) {
+	for (var i = parentLayers.length - 1; i >= 0; i--) {
 		if (cancel) return;
-		var layer = parent.layers[i];
+		var layer = parentLayers[i];
+		incrProgress(layer.name);
 		if (settings.ignoreHiddenLayers && !layer.visible) continue;
-		if (settings.ignoreBackground && layer.isBackgroundLayer) {
-			deleteLayer(layer);
+		if (settings.ignoreBackground && layer.background) {
+			layer.deleteLayer();
 			continue;
 		}
-		if (findTagLayer(layer, "ignore")) {
-			deleteLayer(layer);
+		if (layer.findTagLayer("ignore")) {
+			layer.deleteLayer();
 			continue;
 		}
-		var group = isGroup(layer);
-		if (!group && layer.bounds[2] == 0 && layer.bounds[3] == 0) {
-			deleteLayer(layer);
-			continue;
+		if (!layer.isGroup && !layer.isNormal()) {
+			layer.rasterize(); // In case rasterizeAll failed.
+			if (!layer.isNormal()) {
+				layer.deleteLayer();
+				continue;
+			}
 		}
 
 		// Ensure tags are valid.
@@ -770,8 +888,8 @@ function collectLayers (parent, collect) {
 		while (true) {
 			var matches = re.exec(layer.name);
 			if (!matches) break;
-			var tag = matches[1].toLowerCase();
-			if (group) {
+			var tag = matches[1];
+			if (layer.isGroup) {
 				if (!isValidGroupTag(tag)) {
 					var message = "Invalid group name:\n\n" + layer.name;
 					if (isValidLayerTag(tag))
@@ -792,37 +910,34 @@ function collectLayers (parent, collect) {
 			}
 		}
 
-		var changeVisibility = layer.kind == LayerKind.NORMAL || group;
-		if (changeVisibility) {
-			layer.wasVisible = layer.visible;
-			layer.visible = true;
-			if (layer.allLocked) layer.allLocked = false;
-		}
+		layer.wasVisible = layer.visible;
+		layer.setVisible(true);
+		layer.setLocked(false);
 
-		if (group && findTagLayer(layer, "merge")) {
+		if (layer.isGroup && layer.findTagLayer("merge")) {
 			collectGroupMerge(layer);
 			if (!layer.layers || layer.layers.length == 0) continue;
 		} else if (layer.layers && layer.layers.length > 0) {
-			collectLayers(layer, collect);
+			collectLayers(layer.layers, collect);
 			continue;
-		} else if (group)
+		} else if (layer.isGroup)
 			continue;
 
-		if (changeVisibility) layer.visible = false;
+		layer.setVisible(false);
 		collect.push(layer);
 	}
 }
 
 function collectGroupMerge (parent) {
-	if (!parent.layers) return;
-	for (var i = parent.layers.length - 1; i >= 0; i--) {
-		var layer = parent.layers[i];
+	var parentLayers = parent.layers;
+	if (!parentLayers) return;
+	for (var i = parentLayers.length - 1; i >= 0; i--) {
+		var layer = parentLayers[i];
 		if (settings.ignoreHiddenLayers && !layer.visible) continue;
-		if (findTagLayer(layer, "ignore")) {
-			deleteLayer(layer);
+		if (layer.findTagLayer("ignore")) {
+			layer.deleteLayer();
 			continue;
 		}
-
 		collectGroupMerge(layer);
 	}
 }
@@ -845,47 +960,12 @@ function isValidLayerTag (tag) {
 	if (startsWith(tag, "skin:")) return true;
 	if (startsWith(tag, "folder:")) return true;
 	if (startsWith(tag, "path:")) return true;
+	if (startsWith(tag, "scale:")) return true;
 	return false;
-}
-
-function isGroup (layer) {
-	return layer.typename == "LayerSet";
 }
 
 function stripTags (name) {
 	return trim(name.replace(/\[[^\]]+\]/g, ""));
-}
-
-function findTagLayer (layer, tag) {
-	var groupTag = isValidGroupTag(tag), layerTag = isValidLayerTag(tag);
-	if (endsWith(tag, ":")) tag = tag.slice(0, -1);
-	var re = new RegExp("\\[" + tag + "(:[^\\]]+)?\\]", "i");
-	while (layer) {
-		var group = isGroup(layer);
-		if (((group && groupTag) || (!group && layerTag)) && re.exec(layer.name)) return layer;
-		layer = layer.parent;
-	}
-	return null;
-}
-
-function findTagValue (layer, tag) {
-	layer = findTagLayer(layer, tag);
-	if (!layer) return null;
-	if (endsWith(tag, ":")) tag = tag.slice(0, -1);
-	var matches = new RegExp("\\[" + tag + ":([^\\]]+)\\]", "i").exec(layer.name);
-	if (matches && matches.length) return trim(matches[1]);
-	return stripTags(layer.name);
-}
-
-function getParentBone (boneLayer, bones) {
-	var parentName = findTagValue(boneLayer.parent, "bone") || "root";
-	var parent = get(bones, parentName);
-	if (!parent) { // Parent bone group with no attachment layers.
-		var parentParent = getParentBone(boneLayer.parent, bones);
-		set(bones, parentName, parent = { name: parentName, x: 0, y: 0, parent: parentParent, children: [], layer: boneLayer.parent });
-		parentParent.children.push(parent);
-	}
-	return parent;
 }
 
 function jsonPath (jsonPath) {
@@ -896,31 +976,6 @@ function jsonPath (jsonPath) {
 	} 
 	var name = decodeURI(originalDoc.name);
 	return absolutePath(jsonPath) + name.substring(0, name.indexOf(".")) + ".json";
-}
-
-function folders (layer, path) {
-	var re = new RegExp("\\[(folder|skin)(:[^\\]]+)?\\]", "i");
-	while (layer) {
-		var matches = re.exec(layer.name);
-		if (matches) {
-			var folder = findTagValue(layer, matches[1]);
-			if (matches[1] == "skin" && folder == "default") return folders(layer.parent, path);
-			if (startsWith(folder, "/")) return folder + "/" + path;
-			return folders(layer.parent, folder + "/" + path);
-		}
-		layer = layer.parent;
-	}
-	return path;
-}
-
-function layerPath (layer) {
-	if (!layer) return "";
-	var path = layer.name;
-	while (true) {
-		layer = layer.parent
-		if (!layer || layer == activeDocument) return path;
-		path = layer.name + "/" + path;
-	}
 }
 
 function error (message) {
@@ -935,37 +990,62 @@ function get (object, name) {
 function set (object, name, value) {
 	object["_" + name] = value;
 }
+function add (object, name, value) {
+	var array = object["_" + name];
+	if (!array) object["_" + name] = array = [];
+	array[array.length] = value;
+	return array;
+}
+function remove (object, name, value) {
+	var array = object["_" + name];
+	if (!array) return;
+	for (var i = 0, n = array.length; i < n; i++) {
+		if (array[i] == value) {
+			array.splice(i, 1);
+			return;
+		}
+	}
+}
 function stripName (name) {
 	return name.substring(1);
 }
 
-function rulerOrigin () {
-	var action = new ActionReference();
-	action.putEnumerated(cID("Dcmn"), cID("Ordn"), cID("Trgt"));
-	var result = executeActionGet(action);
-	return [result.getInteger(sID("rulerOriginH")) >> 16, result.getInteger(sID("rulerOriginV")) >> 16];
+function rulerOrigin (axis) {
+	var key = cID("Rlr" + axis);
+	var ref = new ActionReference();
+	ref.putProperty(cID("Prpr"), key);
+	ref.putEnumerated(cID("Dcmn"), cID("Ordn"), cID("Trgt")); 
+	return executeActionGet(ref).getInteger(key) >> 16;
 }
 
+// Seems to not be available when the document has >= 500 layers.
 function rasterizeAll () {
 	try {
 		executeAction(sID("rasterizeAll"), undefined, DialogModes.NO);
 	} catch (ignored) {}
 }
 
-function rasterizeStyles (layer) {
-	try {
-		activeDocument.activeLayer = layer;
-		var desc = new ActionDescriptor();
-		var ref = new ActionReference();
-		ref.putEnumerated(cID("Lyr "), cID("Ordn"), cID("Trgt"));
-		desc.putReference(cID("null"), ref);
-		desc.putEnumerated(cID("What"), sID("rasterizeItem"), sID("layerStyle"));
-		executeAction(sID("rasterizeLayer"), desc, DialogModes.NO);
-	} catch (ignored) {}
+// Layer must be selected.
+function newLayerBelow (name) {
+	var ref = new ActionReference();
+	ref.putClass(cID("Lyr "));
+	var desc2 = new ActionDescriptor();
+	desc2.putString(cID("Nm  "), name);
+	var desc1 = new ActionDescriptor();
+	desc1.putReference(cID("null"), ref);
+	desc1.putBoolean(sID("below"), true);
+	desc1.putObject(cID("Usng"), cID("Lyr "), desc2);
+	executeAction(cID("Mk  "), desc1, DialogModes.NO);
 }
 
-function scaleImage () {
-	var imageSize = activeDocument.width.as("px") * settings.scale;
+// Layer must be selected.
+function merge () {
+	executeAction(cID("Mrg2"), undefined, DialogModes.NO);
+}
+
+function scaleImage (scale) {
+	if (scale == 1) return;
+	var imageSize = activeDocument.width.as("px") * scale;
 	activeDocument.resizeImage(UnitValue(imageSize, "px"), null, null, ResampleMethod.BICUBICSHARPER);
 }
 
@@ -984,8 +1064,8 @@ function scriptDir () {
 	else {
 		try {
 			var error = THROW_ERROR; // Force error which provides the script file name.
-		} catch (ex) {
-			file = ex.fileName;
+		} catch (e) {
+			file = e.fileName;
 		}
 	}
 	return new File(file).parent + "/";
@@ -1000,7 +1080,7 @@ function absolutePath (path) {
 	}
 	if (path.length == 0)
 		path = decodeURI(activeDocument.path);
-	else if (startsWith(settings.imagesDir, "./"))
+	else if (startsWith(path, "./"))
 		path = decodeURI(activeDocument.path) + path.substring(1);
 	path = (new File(path).fsName).toString();
 	path = path.replace(/\\/g, "/");
@@ -1008,22 +1088,14 @@ function absolutePath (path) {
 	return path;
 }
 
-function cID (id) {
-	return charIDToTypeID(id);
-}
-
-function sID (id) {
-	return stringIDToTypeID(id);
-}
-
 function bgColor (control, r, g, b) {
 	control.graphics.backgroundColor = control.graphics.newBrush(control.graphics.BrushType.SOLID_COLOR, [r, g, b]);
 }
 
 function deselectLayers () {
-	var desc = new ActionDescriptor();
 	var ref = new ActionReference();
 	ref.putEnumerated(cID("Lyr "), cID("Ordn"), cID("Trgt"));
+	var desc = new ActionDescriptor();
 	desc.putReference(cID("null"), ref);
 	executeAction(sID("selectNoLayers"), desc, DialogModes.NO);
 }
@@ -1036,20 +1108,299 @@ function convertToRGB () {
 	executeAction(cID("CnvM"), desc, DialogModes.NO);
 }
 
+function deleteDocumentAncestorsMetadata () {
+	if (ExternalObject.AdobeXMPScript == undefined) ExternalObject.AdobeXMPScript = new ExternalObject("lib:AdobeXMPScript");
+	app.activeDocument.xmpMetadata.rawData = new XMPMeta().serialize();
+}
+
 function savePNG (file) {
+	// SaveForWeb changes spaces to dash. Also some users report it writes HTML.
+	//var options = new ExportOptionsSaveForWeb();
+	//options.format = SaveDocumentType.PNG;
+	//options.PNG8 = false;
+	//options.transparency = true;
+	//options.interlaced = false;
+	//options.includeProfile = false;
+	//activeDocument.exportDocument(file, ExportType.SAVEFORWEB, options);
+
+	// SaveAs sometimes writes a huge amount of XML in the PNG. Ignore it or use Oxipng to make smaller PNGs.
 	var options = new PNGSaveOptions();
 	options.compression = 6;
 	activeDocument.saveAs(file, options, true, Extension.LOWERCASE);
 }
 
-// JavaScript utility:
-
-function countKeys (object) {
-	var count = 0;
-	for (var key in object)
-		if (object.hasOwnProperty(key)) count++;
-	return count;
+function getLayerCount () {
+	var ref = new ActionReference();
+	ref.putProperty(cID("Prpr"), sID("numberOfLayers"));
+	ref.putEnumerated(cID("Dcmn"), cID("Ordn"), cID("Trgt"));
+	return executeActionGet(ref).getInteger(sID("numberOfLayers"));
 }
+
+function getLayerID (index) {
+	var ref = new ActionReference();
+	ref.putProperty(cID("Prpr"), sID("layerID"));
+	ref.putIndex(cID("Lyr "), index);
+	return executeActionGet(ref).getInteger(sID("layerID"));
+}
+
+function hasBackgroundLayer () {
+	try {
+		var ref = new ActionReference ()
+		ref.putEnumerated(sID("document"), sID("ordinal"), sID("targetEnum"));
+		return executeActionGet(ref).getBoolean(sID("hasBackgroundLayer"));
+	} catch (e) { // CS2.
+		try {
+			return activeDocument.backgroundLayer;
+		} catch (ignored) {
+		}
+		return false;
+	}
+}
+
+function typeToMethod (type) {
+	if (type == "DescValueType.ENUMERATEDTYPE") return "EnumerationValue";
+	if (type == "DescValueType.OBJECTTYPE") return "ObjectValue";
+	if (type == "DescValueType.UNITDOUBLE") return "Double";
+	if (type == "DescValueType.INTEGERTYPE") return "Integer";
+	if (type == "DescValueType.STRINGTYPE") return "String";
+	if (type == "DescValueType.BOOLEANTYPE") return "Boolean";
+	if (type == "DescValueType.LISTTYPE") return "List";
+	if (type == "DescValueType.REFERENCETYPE") return "Reference";
+	throw new Error("Unknown type: " + type);
+}
+
+// Example:
+//	var ref = new ActionReference();
+//	ref.putIdentifier(cID("Lyr "), layer.id);
+//	alert(properties(executeActionGet(ref)));
+function properties (object, indent) {
+	if (!indent) indent = 0;
+	var text = "";
+	for (var i = 0, n = object.count; i < n; i++) {
+		var key = object.getKey(i);
+		var type = typeToMethod(object.getType(key));
+		var value = object["get" + type](key);
+		if (type == "EnumerationValue") value = typeIDToStringID(value);
+		else if (type == "ObjectValue") value = "{\n" + properties(value, indent + 1) + "}";
+		else if (type == "List") {
+			var items = "";
+			for (var ii = 0, nn = value.count; ii < nn; ii++) {
+				var itemType = typeToMethod(value.getType(ii));
+				items += properties(value["get" + itemType](ii), indent + 1);
+			}
+			if (items) items = "\n" + items;
+			value = "[" + items + "]";
+		}
+		for (var ii = 0; ii < indent; ii++)
+			text += "  ";
+		text += typeIDToStringID(key) + ": " + value + " (" + type + ")\n";
+	}
+	return text;
+}
+
+// Layer class.
+
+function Layer (id, parent) {
+	this.id = id;
+	this.parent = parent;
+
+	this.name = this.get("name", "String");
+
+	var type = typeIDToStringID(this.get("layerSection", "EnumerationValue"));
+	this.isGroupEnd = type == "layerSectionEnd";
+	if (this.isGroupEnd) return;
+	this.isGroup = type == "layerSectionStart";
+	this.isLayer = type == "layerSectionContent";
+
+	this.visible = this.get("visible", "Boolean");
+	this.background = this.get("background", "Boolean");
+	this.locked = this.get("layerLocking", "ObjectValue").getBoolean(sID("protectAll"));
+	this.blendMode = typeIDToStringID(this.get("mode", "EnumerationValue"));
+
+	var bounds = this.get("bounds", "ObjectValue");
+	this.top = bounds.getDouble(sID("top"));
+	this.left = bounds.getDouble(sID("left"));
+	this.bottom = bounds.getDouble(sID("bottom"));
+	this.right = bounds.getDouble(sID("right"));
+	this.width = this.right - this.left;
+	this.height = this.bottom - this.top;
+
+	if (this.isGroup) this.layers = [];
+}
+
+Layer.prototype.get = function (name, type, error) {
+	var property = sID(name);
+	var ref = new ActionReference();
+	ref.putProperty(cID("Prpr"), property);
+	ref.putIdentifier(cID("Lyr "), this.id);
+	try {
+		return executeActionGet(ref)["get" + type](property);
+	} catch (e) {
+		if (error) return error();
+		e.message = "Unable to get layer " + this + " property: " + name + "\n" + e.message;
+		throw e;
+	}
+};
+
+Layer.prototype.has = function (name) {
+	var property = sID(name);
+	var ref = new ActionReference();
+	ref.putProperty(cID("Prpr"), property);
+	ref.putIdentifier(cID("Lyr "), this.id);
+	try {
+		return executeActionGet(ref).hasKey(property);
+	} catch (ignored) {}
+	return false;
+};
+
+Layer.prototype.isNormal = function () {
+	var layer = this;
+	return this.get("layerKind", "Integer", function () {
+		return layer.has("smartObject") ? 0 : 1;
+	}) == 1;
+}
+
+Layer.prototype.setVisible = function (visible) {
+	if (this.visible == visible) return;
+	this.visible = visible;
+	var ref = new ActionReference();
+	ref.putIdentifier(cID("Lyr "), this.id);
+	var desc = new ActionDescriptor();
+	desc.putReference(cID("null"), ref);
+	executeAction(cID(visible ? "Shw " : "Hd  "), desc, DialogModes.NO);
+};
+
+Layer.prototype.setLocked = function (locked) {
+	if (this.locked == locked) return;
+	this.locked = locked;
+	var desc1 = new ActionDescriptor();
+	var ref = new ActionReference();
+	ref.putIdentifier(cID("Lyr "), this.id);
+	desc1.putReference(cID("null"), ref);
+	var desc2 = new ActionDescriptor();
+	desc2.putBoolean(sID("protectNone"), true);
+	desc1.putObject(sID("layerLocking"), sID("layerLocking"), desc2);
+	executeAction(sID("applyLocking"), desc1, DialogModes.NO);
+};
+
+Layer.prototype.unlock = function () {
+	this.setLocked(false);
+	if (!this.layers) return;
+	for (var i = this.layers.length - 1; i >= 0; i--)
+		this.layers[i].unlock();
+};
+
+Layer.prototype.deleteLayer = function () {
+	this.unlock();
+	var ref = new ActionReference();
+	ref.putIdentifier(cID("Lyr "), this.id);
+	var desc = new ActionDescriptor();
+	desc.putReference(cID("null"), ref);
+	executeAction(cID("Dlt "), desc, DialogModes.NO);
+};
+
+Layer.prototype.rasterize = function () {
+	var ref = new ActionReference();
+	ref.putIdentifier(cID("Lyr "), this.id);
+	var desc = new ActionDescriptor();
+	desc.putReference(cID("null"), ref);
+	executeAction(sID("rasterizeLayer"), desc, DialogModes.NO);
+};
+
+Layer.prototype.rasterizeStyles = function () {
+	if (!this.has("layerEffects")) return;
+	this.select();
+	newLayerBelow(this.name);
+	this.select(true);
+	merge();
+
+	// Rasterizing styles may not give the desired results in all cases, merge does.
+	//var ref = new ActionReference();
+	//ref.putProperty(cID("Prpr"), sID("layerEffects"));
+	//ref.putIdentifier(cID("Lyr "), this.id);
+	//if (executeActionGet(ref).hasKey(sID("layerEffects"))) {
+	//	var desc = new ActionDescriptor();
+	//	desc.putReference(cID("null"), ref);
+	//	desc.putEnumerated(cID("What"), sID("rasterizeItem"), sID("layerStyle"));
+	//	executeAction(sID("rasterizeLayer"), desc, DialogModes.NO);
+	//}
+};
+
+Layer.prototype.select = function (add) {
+	var ref = new ActionReference();
+	ref.putIdentifier(cID("Lyr "), this.id);
+	var desc = new ActionDescriptor();
+	desc.putReference(cID("null"), ref);
+	if (add) desc.putEnumerated(sID("selectionModifier"), sID("selectionModifierType"), sID("addToSelection"));
+	desc.putBoolean(cID("MkVs"), false);
+	executeAction(cID("slct"), desc, DialogModes.NO);
+}
+
+Layer.prototype.findTagLayer = function (tag) {
+	var groupTag = isValidGroupTag(tag), layerTag = isValidLayerTag(tag);
+	if (endsWith(tag, ":")) tag = tag.slice(0, -1);
+	var re = new RegExp("\\[" + tag + "(:[^\\]]+)?\\]", "i");
+	var layer = this;
+	while (layer) {
+		if (((layer.isGroup && groupTag) || (layer.isLayer && layerTag)) && re.exec(layer.name)) return layer;
+		layer = layer.parent;
+	}
+	return null;
+};
+
+Layer.prototype.findTagValue = function (tag) {
+	var layer = this.findTagLayer(tag);
+	if (!layer) return null;
+	if (endsWith(tag, ":")) tag = tag.slice(0, -1);
+	var matches = new RegExp("\\[" + tag + ":([^\\]]+)\\]", "i").exec(layer.name);
+	if (matches && matches.length) return trim(matches[1]);
+	return stripTags(layer.name);
+};
+
+Layer.prototype.getParentBone = function (bones) {
+	var parentName = this.parent ? this.parent.findTagValue("bone") : null;
+	if (!parentName) parentName = "root";
+	var parent = get(bones, parentName);
+	if (!parent) { // Parent bone group with no attachment layers.
+		var parentParent = this.parent.getParentBone(bones);
+		set(bones, parentName, parent = { name: parentName, x: 0, y: 0, parent: parentParent, children: [], layer: this.parent });
+		parentParent.children.push(parent);
+	}
+	return parent;
+};
+
+var foldersRE = new RegExp("\\[(folder|skin)(:[^\\]]+)?\\]", "i");
+Layer.prototype.folders = function (path) {
+	var layer = this;
+	while (layer) {
+		var matches = foldersRE.exec(layer.name);
+		if (matches) {
+			var folder = layer.findTagValue(matches[1]);
+			if (matches[1] == "skin" && folder == "default") return layer.parent.folders(path);
+			path = folder + "/" + path;
+			if (startsWith(folder, "/")) return path;
+			return layer.parent ? layer.parent.folders(path) : path;
+		}
+		layer = layer.parent;
+	}
+	return path;
+};
+
+Layer.prototype.path = function (path) {
+	var layer = this;
+	var path = layer.name;
+	while (true) {
+		layer = layer.parent;
+		if (!layer) return path;
+		path = layer.name + "/" + path;
+	}
+};
+
+Layer.prototype.toString = function () {
+	return this.name ? this.path() : this.id;
+};
+
+// JavaScript utility:
 
 function joinKeys (object, glue) {
 	if (!glue) glue = ", ";
@@ -1075,6 +1426,12 @@ function joinValues (object, glue) {
 	return value;
 }
 
+function indexOf (array, value) {
+	for (var i = 0, n = array.length; i < n; i++)
+		if (array[i] == value) return i;
+	return -1;
+}
+
 function trim (value) {
 	return value.replace(/^\s+|\s+$/g, "");
 }
@@ -1090,3 +1447,5 @@ function endsWith (str, suffix) {
 function quote (value) {
 	return '"' + value.replace(/"/g, '\\"') + '"';
 }
+
+showSettingsDialog();
