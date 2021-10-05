@@ -21,6 +21,7 @@ var originalDoc, settings, progress, cancel, errors;
 try {
 	originalDoc = activeDocument;
 } catch (ignored) {}
+var docWidth = activeDocument.width.as("px"), docHeight = activeDocument.height.as("px");
 
 var defaultSettings = {
 	ignoreHiddenLayers: false,
@@ -139,7 +140,7 @@ function run () {
 		layer.scale = parseFloat(scale);
 		if (isNaN(layer.scale)) error("Invalid scale " + scale + ": " + layer.path());
 
-		var bone, boneLayer = layer.findTagLayer("bone");
+		var bone = null, boneLayer = layer.findTagLayer("bone");
 		if (boneLayer) {
 			var parent = boneLayer.getParentBone(bones);
 			var boneName = boneLayer.findTagValue("bone");
@@ -159,9 +160,10 @@ function run () {
 			bone.x += layer.width * settings.scale / 2 + settings.padding;
 			bone.y = layer.bottom * settings.scale + settings.padding;
 			bone.y -= layer.height * settings.scale / 2 + settings.padding;
+			bone.y = docHeight - bone.y;
 			// Make relative to the Photoshop document ruler origin.
 			bone.x -= xOffSet * settings.scale;
-			bone.y -= (activeDocument.height.as("px") - yOffSet) * settings.scale;
+			bone.y -= (docHeight - yOffSet) * settings.scale;
 		}
 
 		var skinName = layer.findTagValue("skin");
@@ -344,16 +346,19 @@ function run () {
 
 				if (writeImages) storeHistory();
 
-				var x = layer.left, y = layer.top;
+				var x = layer.left, y = layer.top, docHeightCropped = docHeight;
 				if (settings.trimWhitespace) {
-					if (writeImages) activeDocument.crop([x - xOffSet, y - yOffSet, layer.right - xOffSet, layer.bottom - yOffSet], 0, width, height);
+					if (writeImages) {
+						activeDocument.crop([x - xOffSet, y - yOffSet, layer.right - xOffSet, layer.bottom - yOffSet], 0, width, height);
+						docHeightCropped = height;
+					}
 					x *= settings.scale;
 					y *= settings.scale;
 				} else {
 					x = 0;
 					y = 0;
-					width = activeDocument.width.as("px") - xOffSet * settings.scale;
-					height = activeDocument.height.as("px") - yOffSet * settings.scale;
+					width = docWidth - xOffSet * settings.scale;
+					height = docHeight - yOffSet * settings.scale;
 				}
 				width = width * settings.scale + settings.padding * 2;
 				height = height * settings.scale + settings.padding * 2;
@@ -372,13 +377,13 @@ function run () {
 				if (layerCount < totalLayerCount) layer.deleteLayer();
 
 				x += Math.round(width) / 2 - settings.padding;
-				y = activeDocument.height.as("px") - (y + Math.round(height) / 2 - settings.padding);
+				y = docHeightCropped - (y + Math.round(height) / 2 - settings.padding);
 				width *= scale;
 				height *= scale;
 
 				// Make relative to the Photoshop document ruler origin.
 				x -= xOffSet * settings.scale;
-				y -= activeDocument.height.as("px") - yOffSet * settings.scale;
+				y -= docHeightCropped - yOffSet * settings.scale;
 
 				if (bone) { // Make relative to parent bone.
 					x -= bone.x;
