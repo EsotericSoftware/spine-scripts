@@ -13,7 +13,7 @@ app.bringToFront();
 //     * Neither the name of Esoteric Software nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-var scriptVersion = 7.11; // This is incremented every time the script is modified, so you know if you have the latest.
+var scriptVersion = 7.12; // This is incremented every time the script is modified, so you know if you have the latest.
 
 var cs2 = parseInt(app.version) < 10, cID = charIDToTypeID, sID = stringIDToTypeID;
 
@@ -351,7 +351,7 @@ function run () {
 
 				var width = layer.width, height = layer.height;
 				if (!width || !height) {
-					layer.deleteLayer();
+					layer.hide();
 					continue;
 				}
 				slot.attachments = true;
@@ -386,7 +386,7 @@ function run () {
 					restoreHistory();
 				}
 
-				if (layerCount < totalLayerCount) layer.deleteLayer();
+				if (layerCount < totalLayerCount) layer.hide();
 
 				x += Math.round(width) / 2 - settings.padding;
 				y = docHeightCropped - (y + Math.round(height) / 2 - settings.padding);
@@ -880,17 +880,18 @@ function collectLayers (parentLayers, collect) {
 		incrProgress(layer.name);
 		if (settings.ignoreHiddenLayers && !layer.visible) continue;
 		if (settings.ignoreBackground && layer.background) {
-			layer.deleteLayer();
+			layer.hide();
 			continue;
 		}
 		if (layer.findTagLayer("ignore")) {
-			layer.deleteLayer();
+			layer.hide();
 			continue;
 		}
+		if (layer.adjustment) continue;
 		if (!layer.isGroup && !layer.isNormal()) {
 			layer.rasterize(); // In case rasterizeAll failed.
 			if (!layer.isNormal()) {
-				layer.deleteLayer();
+				layer.hide();
 				continue;
 			}
 		}
@@ -947,7 +948,7 @@ function collectGroupMerge (parent) {
 		var layer = parentLayers[i];
 		if (settings.ignoreHiddenLayers && !layer.visible) continue;
 		if (layer.findTagLayer("ignore")) {
-			layer.deleteLayer();
+			layer.hide();
 			continue;
 		}
 		collectGroupMerge(layer);
@@ -1229,6 +1230,10 @@ function Layer (id, parent) {
 	this.locked = this.get("layerLocking", "ObjectValue").getBoolean(sID("protectAll"));
 	this.blendMode = typeIDToStringID(this.get("mode", "EnumerationValue"));
 
+	this.adjustment = this.get("layerKind", "Integer", function () {
+		return 0;
+	}) == 2/*kAdjustmentSheet*/;
+
 	var bounds = this.get("bounds", "ObjectValue");
 	this.top = bounds.getDouble(sID("top"));
 	this.left = bounds.getDouble(sID("left"));
@@ -1268,9 +1273,13 @@ Layer.prototype.has = function (name) {
 Layer.prototype.isNormal = function () {
 	var layer = this;
 	return this.get("layerKind", "Integer", function () {
-		return layer.has("smartObject") ? 0 : 1;
-	}) == 1;
-}
+		return layer.has("smartObject") ? 5/*kSmartObjectSheet*/ : 1/*kPixelSheet*/;
+	}) == 1/*kPixelSheet*/;
+};
+
+Layer.prototype.isAdjustmentClipped = function () {
+	return layer.get("group", "Boolean");
+};
 
 Layer.prototype.setVisible = function (visible) {
 	if (this.visible == visible) return;
@@ -1280,6 +1289,10 @@ Layer.prototype.setVisible = function (visible) {
 	var desc = new ActionDescriptor();
 	desc.putReference(cID("null"), ref);
 	executeAction(cID(visible ? "Shw " : "Hd  "), desc, DialogModes.NO);
+};
+
+Layer.prototype.hide = function () {
+	this.setVisible(false);
 };
 
 Layer.prototype.setLocked = function (locked) {
