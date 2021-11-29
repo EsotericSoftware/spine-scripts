@@ -13,7 +13,7 @@ app.bringToFront();
 //     * Neither the name of Esoteric Software nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-var scriptVersion = 7.10; // This is incremented every time the script is modified, so you know if you have the latest.
+var scriptVersion = 7.11; // This is incremented every time the script is modified, so you know if you have the latest.
 
 var cs2 = parseInt(app.version) < 10, cID = charIDToTypeID, sID = stringIDToTypeID;
 
@@ -166,7 +166,12 @@ function run () {
 			bone.y -= (docHeight - yOffSet) * settings.scale;
 		}
 
-		var skinName = layer.findTagValue("skin");
+		var skinLayer = layer.findTagLayer("skin");
+		var skinName = skinLayer.getTagValue("skin");
+		if (startsWith(skinName, "/"))
+			skinName = skinName.substring(1);
+		else if (skinLayer.parent)
+			skinName = skinLayer.parent.folders("") + skinName;
 		if (skinName && skinName.toLowerCase() == "default") {
 			error("The skin name \"default\" is reserved: " + layer.path() + "\nPlease use a different name.");
 			continue;
@@ -176,7 +181,7 @@ function run () {
 
 		if (skinName == "default")
 			layer.placeholderName = layer.attachmentName;
-		else if (!startsWith(layer.attachmentName, skinName + "/")) {
+		else if (!startsWith(layer.attachmentName, skinName + "/")) { // Should never happen.
 			error("Expected attachment name \"" + layer.attachmentName + "\" to start with skin name: " + skinName + "/");
 			continue;
 		} else
@@ -1358,11 +1363,15 @@ Layer.prototype.findTagLayer = function (tag) {
 Layer.prototype.findTagValue = function (tag) {
 	var layer = this.findTagLayer(tag);
 	if (!layer) return null;
-	if (endsWith(tag, ":")) tag = tag.slice(0, -1);
-	var matches = new RegExp("\\[" + tag + ":([^\\]]+)\\]", "i").exec(layer.name);
-	if (matches && matches.length) return trim(matches[1]);
-	return stripTags(layer.name);
+	return layer.getTagValue(tag);
 };
+
+Layer.prototype.getTagValue = function (tag) {
+	if (endsWith(tag, ":")) tag = tag.slice(0, -1);
+	var matches = new RegExp("\\[" + tag + ":([^\\]]+)\\]", "i").exec(this.name);
+	if (matches && matches.length) return trim(matches[1]);
+	return stripTags(this.name);
+}
 
 Layer.prototype.getParentBone = function (bones) {
 	var parentName = this.parent ? this.parent.findTagValue("bone") : null;
