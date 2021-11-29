@@ -166,15 +166,18 @@ function run () {
 			bone.y -= (docHeight - yOffSet) * settings.scale;
 		}
 
+		var skinName;
 		var skinLayer = layer.findTagLayer("skin");
-		var skinName = skinLayer.getTagValue("skin");
-		if (startsWith(skinName, "/"))
-			skinName = skinName.substring(1);
-		else if (skinLayer.parent)
-			skinName = skinLayer.parent.folders("") + skinName;
-		if (skinName && skinName.toLowerCase() == "default") {
-			error("The skin name \"default\" is reserved: " + layer.path() + "\nPlease use a different name.");
-			continue;
+		if (skinLayer) {
+			skinName = skinLayer.getTagValue("skin");
+			if (startsWith(skinName, "/"))
+				skinName = skinName.substring(1);
+			else if (skinLayer.parent)
+				skinName = skinLayer.parent.folders("") + skinName;
+			if (skinName && skinName.toLowerCase() == "default") {
+				error("The skin name \"default\" is reserved: " + layer.path() + "\nPlease use a different name.");
+				continue;
+			}
 		}
 		if (!skinName) skinName = "default";
 		layer.skinName = skinName;
@@ -338,6 +341,8 @@ function run () {
 
 				incrProgress(layer.name);
 				if (cancel) return;
+
+				if (layer.findTagLayer("overlay")) continue;
 
 				var attachmentName = layer.attachmentName, attachmentPath = layer.attachmentPath, placeholderName = layer.placeholderName;
 				var scale = layer.scale;
