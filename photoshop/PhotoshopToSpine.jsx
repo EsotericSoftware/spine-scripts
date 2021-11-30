@@ -13,7 +13,7 @@ app.bringToFront();
 //     * Neither the name of Esoteric Software nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-var scriptVersion = 7.12; // This is incremented every time the script is modified, so you know if you have the latest.
+var scriptVersion = 7.13; // This is incremented every time the script is modified, so you know if you have the latest.
 
 var cs2 = parseInt(app.version) < 10, cID = charIDToTypeID, sID = stringIDToTypeID;
 
@@ -100,7 +100,7 @@ function run () {
 	};
 	initializeLayers(context, null, rootLayers);
 	showProgress("Collecting layers...", context.total);
-	collectLayers(rootLayers, layers);
+	collectLayers(rootLayers, layers, []);
 
 	// Store the bones, slot names, and layers for each skin.
 	var bones = { _root: { name: "root", x: 0, y: 0, children: [] } };
@@ -109,7 +109,7 @@ function run () {
 	var skinDuplicates = {};
 	var totalLayerCount = 0;
 	outer:
-	for (var i = 0, n = layers.length; i < n; i++) {
+	for (var i = layers.length - 1; i >= 0; i--) {
 		if (cancel) return;
 		var layer = layers[i];
 
@@ -337,12 +337,10 @@ function run () {
 			for (var i = skinLayers.length - 1; i >= 0; i--) {
 				layerCount++;
 				var layer = skinLayers[i];
-				layer.setVisible(true);
+				layer.show();
 
 				incrProgress(layer.name);
 				if (cancel) return;
-
-				if (layer.findTagLayer("overlay")) continue;
 
 				var attachmentName = layer.attachmentName, attachmentPath = layer.attachmentPath, placeholderName = layer.placeholderName;
 				var scale = layer.scale;
@@ -353,6 +351,13 @@ function run () {
 					layer = new Layer(layer.id, layer.parent);
 				}
 				layer.rasterizeStyles();
+
+				for (var ii = 0, nn = layer.overlays.length; ii < nn; ii++) {
+					var overlay = layer.overlays[ii];
+					overlay.moveAbove(layer);
+					overlay.setClippingMask(true);
+					overlay.show();
+				}
 
 				var width = layer.width, height = layer.height;
 				if (!width || !height) {
@@ -784,6 +789,7 @@ function showHelpDialog () {
 		+ "•  [skin] or [skin:name]  Layers are placed in a skin. Skin layer images are output in a subfolder for the skin.\n"
 		+ "•  [scale:number]  Layers are scaled. Their attachments are scaled inversely, so they appear the same size in Spine.\n"
 		+ "•  [folder] or [folder:name]  Layer images are output in a subfolder. Folder groups can be nested.\n"
+		+ "•  [overlay]  This layer is used as a clipping mask for all layers below.\n"
 		+ "•  [ignore]  Layers, groups, and any child groups will not be output.\n"
 		+ "\n"
 		+ "Group names:\n"
@@ -877,9 +883,9 @@ function initializeLayers (context, parent, parentLayers) {
 	}
 }
 
-function collectLayers (parentLayers, collect) {
+function collectLayers (parentLayers, collect, overlays) {
 	outer:
-	for (var i = parentLayers.length - 1; i >= 0; i--) {
+	for (var i = 0, n = parentLayers.length; i < n; i++) {
 		if (cancel) return;
 		var layer = parentLayers[i];
 		incrProgress(layer.name);
@@ -928,20 +934,34 @@ function collectLayers (parentLayers, collect) {
 			}
 		}
 
+		if (layer.findTagLayer("overlay")) {
+			if (!layer.visible) continue;
+			if (layer.isGroup) {
+				layer.select();
+				merge();
+				layer = new Layer(layer.id, layer.parent);
+			}
+			layer.setLocked(false);
+			layer.hide();
+			overlays.push(layer);
+			continue;
+		}
+
 		layer.wasVisible = layer.visible;
-		layer.setVisible(true);
+		layer.show();
 		layer.setLocked(false);
 
 		if (layer.isGroup && layer.findTagLayer("merge")) {
 			collectGroupMerge(layer);
 			if (!layer.layers || layer.layers.length == 0) continue;
 		} else if (layer.layers && layer.layers.length > 0) {
-			collectLayers(layer.layers, collect);
+			collectLayers(layer.layers, collect, overlays);
 			continue;
 		} else if (layer.isGroup)
 			continue;
 
-		layer.setVisible(false);
+		layer.overlays = overlays.slice();
+		layer.hide();
 		collect.push(layer);
 	}
 }
@@ -971,6 +991,7 @@ function isValidLayerTag (tag) {
 	case "skin":
 	case "folder":
 	case "ignore":
+	case "overlay":
 		return true;
 	}
 	if (startsWith(tag, "bone:")) return true;
@@ -1275,6 +1296,10 @@ Layer.prototype.has = function (name) {
 	return false;
 };
 
+Layer.prototype.getIndex = function () {
+	return this.get("itemIndex", "Integer");
+};
+
 Layer.prototype.isNormal = function () {
 	var layer = this;
 	return this.get("layerKind", "Integer", function () {
@@ -1282,8 +1307,18 @@ Layer.prototype.isNormal = function () {
 	}) == 1/*kPixelSheet*/;
 };
 
-Layer.prototype.isAdjustmentClipped = function () {
+Layer.prototype.isClipping = function () {
 	return layer.get("group", "Boolean");
+};
+
+Layer.prototype.setClippingMask = function (clipping) {
+	var ref = new ActionReference();
+	ref.putIdentifier(cID("Lyr "), this.id);
+	var desc = new ActionDescriptor();
+	desc.putReference(cID("null"), ref);
+	try {
+		executeAction(cID(clipping ? "GrpL" : "Ungr"), desc, DialogModes.NO);
+	} catch (ignored) {} // Fails if already in the desired state.
 };
 
 Layer.prototype.setVisible = function (visible) {
@@ -1298,6 +1333,10 @@ Layer.prototype.setVisible = function (visible) {
 
 Layer.prototype.hide = function () {
 	this.setVisible(false);
+};
+
+Layer.prototype.show = function () {
+	this.setVisible(true);
 };
 
 Layer.prototype.setLocked = function (locked) {
@@ -1319,6 +1358,18 @@ Layer.prototype.unlock = function () {
 	for (var i = this.layers.length - 1; i >= 0; i--)
 		this.layers[i].unlock();
 };
+
+Layer.prototype.moveAbove = function (otherLayer) {
+	var ref1 = new ActionReference();
+	ref1.putIdentifier(cID("Lyr "), this.id);
+	var ref2 = new ActionReference();
+	ref2.putIndex(cID("Lyr "), otherLayer.getIndex());
+	var desc = new ActionDescriptor();
+	desc.putReference(cID("null"), ref1);
+	desc.putReference(cID("T   "), ref2);
+	desc.putBoolean(cID("Adjs"), false);
+	executeAction(cID("move"), desc, DialogModes.NO);
+}
 
 Layer.prototype.deleteLayer = function () {
 	this.unlock();
