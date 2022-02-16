@@ -13,7 +13,7 @@ app.bringToFront();
 //     * Neither the name of Esoteric Software nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-var scriptVersion = 7.16; // This is incremented every time the script is modified, so you know if you have the latest.
+var scriptVersion = 7.17; // This is incremented every time the script is modified, so you know if you have the latest.
 
 var cs2 = parseInt(app.version) < 10, cID = charIDToTypeID, sID = stringIDToTypeID;
 
@@ -1009,7 +1009,7 @@ function stripTags (name) {
 
 function jsonPath (jsonPath) {
 	if (endsWith(jsonPath, ".json")) {
-		var index = jsonPath.replace(/\\/g, "/").lastIndexOf("/");
+		var index = forwardSlashes(jsonPath).lastIndexOf("/");
 		if (index != -1) return absolutePath(jsonPath.slice(0, index + 1)) + jsonPath.slice(index + 1);
 		return absolutePath("./") + jsonPath;
 	} 
@@ -1111,10 +1111,10 @@ function scriptDir () {
 }
 
 function absolutePath (path) {
-	path = trim(path);
+	path = forwardSlashes(trim(path));
 	if (!startsWith(path, "./")) {
-		var absolute = decodeURI(new File(path).absoluteURI);
-		if (!startsWith(absolute, decodeURI(new File("child").parent.absoluteURI))) return absolute + "/";
+		var absolute = decodeURI(new File(path).fsName);
+		if (!startsWith(absolute, decodeURI(new File("child").parent.fsName))) return forwardSlashes(absolute) + "/";
 		path = "./" + path;
 	}
 	if (path.length == 0)
@@ -1122,7 +1122,7 @@ function absolutePath (path) {
 	else if (startsWith(path, "./"))
 		path = decodeURI(activeDocument.path) + path.substring(1);
 	path = (new File(path).fsName).toString();
-	path = path.replace(/\\/g, "/");
+	path = forwardSlashes(path);
 	if (path.substring(path.length - 1) != "/") path += "/";
 	return path;
 }
@@ -1136,7 +1136,9 @@ function deselectLayers () {
 	ref.putEnumerated(cID("Lyr "), cID("Ordn"), cID("Trgt"));
 	var desc = new ActionDescriptor();
 	desc.putReference(cID("null"), ref);
-	executeAction(sID("selectNoLayers"), desc, DialogModes.NO);
+	try {
+		executeAction(sID("selectNoLayers"), desc, DialogModes.NO);
+	} catch (ignored) {} // Fails if only background layer.
 }
 
 function convertToRGB () {
@@ -1528,6 +1530,10 @@ function endsWith (str, suffix) {
 
 function quote (value) {
 	return '"' + value.replace(/"/g, '\\"') + '"';
+}
+
+function forwardSlashes (path) {
+	return path.replace(/\\/g, "/");
 }
 
 showSettingsDialog();
