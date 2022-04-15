@@ -63,6 +63,7 @@ Tags in square brackets can be used in layer and group names to customize the ou
 * `[scale:number]`  Layers are scaled. Their attachments are scaled inversely, so they appear the same size in Spine.
 * `[folder]` or `[folder:name]`  Layer images are output in a subfolder. Folder groups can be nested.
 * `[overlay]`  This layer is used as a clipping mask for all layers below.
+* `[trim]` or `[trim:false]`  Force this layer to be whitespace trimmed or not.
 * `[ignore]` Layers, groups, and any child groups will not be output.
 
 **Group names:**

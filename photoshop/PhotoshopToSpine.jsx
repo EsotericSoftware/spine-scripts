@@ -13,7 +13,7 @@ app.bringToFront();
 //     * Neither the name of Esoteric Software nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-var scriptVersion = 7.17; // This is incremented every time the script is modified, so you know if you have the latest.
+var scriptVersion = 7.18; // This is incremented every time the script is modified, so you know if you have the latest.
 
 var cs2 = parseInt(app.version) < 10, cID = charIDToTypeID, sID = stringIDToTypeID;
 
@@ -345,6 +345,12 @@ function run () {
 				var attachmentName = layer.attachmentName, attachmentPath = layer.attachmentPath, placeholderName = layer.placeholderName;
 				var scale = layer.scale, overlays = layer.overlays;
 
+				var trim = layer.findTagValue("trim");
+				if (trim != null)
+					trim = trim != "false";
+				else
+					trim = settings.trimWhitespace;
+
 				if (layer.isGroup) {
 					layer.select();
 					merge();
@@ -369,7 +375,7 @@ function run () {
 				if (writeImages) storeHistory();
 
 				var x = layer.left, y = layer.top, docHeightCropped = docHeight;
-				if (settings.trimWhitespace) {
+				if (trim) {
 					if (writeImages) {
 						activeDocument.crop([x - xOffSet, y - yOffSet, layer.right - xOffSet, layer.bottom - yOffSet], 0, width, height);
 						docHeightCropped = height;
@@ -790,6 +796,7 @@ function showHelpDialog () {
 		+ "•  [scale:number]  Layers are scaled. Their attachments are scaled inversely, so they appear the same size in Spine.\n"
 		+ "•  [folder] or [folder:name]  Layer images are output in a subfolder. Folder groups can be nested.\n"
 		+ "•  [overlay]  This layer is used as a clipping mask for all layers below.\n"
+		+ "•  [trim] or [trim:false]  Force this layer to be whitespace trimmed or not.\n"
 		+ "•  [ignore]  Layers, groups, and any child groups will not be output.\n"
 		+ "\n"
 		+ "Group names:\n"
@@ -992,6 +999,7 @@ function isValidLayerTag (tag) {
 	case "folder":
 	case "ignore":
 	case "overlay":
+	case "trim":
 		return true;
 	}
 	if (startsWith(tag, "bone:")) return true;
@@ -1000,6 +1008,7 @@ function isValidLayerTag (tag) {
 	if (startsWith(tag, "folder:")) return true;
 	if (startsWith(tag, "path:")) return true;
 	if (startsWith(tag, "scale:")) return true;
+	if (startsWith(tag, "trim:")) return true;
 	return false;
 }
 
