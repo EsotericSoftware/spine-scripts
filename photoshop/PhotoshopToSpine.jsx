@@ -13,7 +13,7 @@ app.bringToFront();
 //     * Neither the name of Esoteric Software nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-var scriptVersion = 7.18; // This is incremented every time the script is modified, so you know if you have the latest.
+var scriptVersion = 7.19; // This is incremented every time the script is modified, so you know if you have the latest.
 
 var cs2 = parseInt(app.version) < 10, cID = charIDToTypeID, sID = stringIDToTypeID;
 
@@ -365,8 +365,7 @@ function run () {
 					overlay.show();
 				}
 
-				var width = layer.width, height = layer.height;
-				if (!width || !height) {
+				if (!layer.width || !layer.height) {
 					layer.hide();
 					continue;
 				}
@@ -374,14 +373,15 @@ function run () {
 
 				if (writeImages) storeHistory();
 
-				var x = layer.left, y = layer.top, docHeightCropped = docHeight;
+				var x, y, width, height, docHeightCropped = docHeight;
 				if (trim) {
-					if (writeImages) {
-						activeDocument.crop([x - xOffSet, y - yOffSet, layer.right - xOffSet, layer.bottom - yOffSet], 0, width, height);
-						docHeightCropped = height;
-					}
-					x *= settings.scale;
-					y *= settings.scale;
+					activeDocument.trim(TrimType.TRANSPARENT, true, true, false, false);
+					x = (docWidth - activeDocument.width.as("px")) * settings.scale;
+					y = (docHeight - activeDocument.height.as("px")) * settings.scale;
+					activeDocument.trim(TrimType.TRANSPARENT, false, false, true, true);
+					width = activeDocument.width.as("px");
+					height = activeDocument.height.as("px");
+					docHeightCropped = height;
 				} else {
 					x = 0;
 					y = 0;
@@ -1272,7 +1272,7 @@ function Layer (id, parent) {
 		return 0;
 	}) == 2/*kAdjustmentSheet*/;
 
-	var bounds = this.get("bounds", "ObjectValue");
+	var bounds = this.get("bounds", "ObjectValue"); // Not tightly fitting if there are layer styles.
 	this.top = bounds.getDouble(sID("top"));
 	this.left = bounds.getDouble(sID("left"));
 	this.bottom = bounds.getDouble(sID("bottom"));
