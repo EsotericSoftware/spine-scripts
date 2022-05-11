@@ -13,7 +13,7 @@ app.bringToFront();
 //     * Neither the name of Esoteric Software nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-var scriptVersion = 7.08; // This is incremented every time the script is modified, so you know if you have the latest.
+var scriptVersion = 7.21; // This is incremented every time the script is modified, so you know if you have the latest.
 
 var cs2 = parseInt(app.version) < 10, cID = charIDToTypeID, sID = stringIDToTypeID;
 
@@ -21,7 +21,6 @@ var originalDoc, settings, progress, cancel, errors;
 try {
 	originalDoc = activeDocument;
 } catch (ignored) {}
-var docWidth = activeDocument.width.as("px"), docHeight = activeDocument.height.as("px");
 
 var defaultSettings = {
 	ignoreHiddenLayers: false,
@@ -48,13 +47,14 @@ function run () {
 	var imagesFolder = new Folder(imagesDir);
 	imagesFolder.create();
 
+	var docWidth = originalDoc.width.as("px"), docHeight = originalDoc.height.as("px");
 	var xOffSet = rulerOrigin("H"), yOffSet = rulerOrigin("V");
 
 	try {
 		deleteDocumentAncestorsMetadata();
 	} catch (ignored) {}
 
-	activeDocument.duplicate();
+	originalDoc.duplicate();
 	deselectLayers();
 
 	// Uncomment this line to enlarge the canvas so layers are not cropped.
@@ -100,7 +100,7 @@ function run () {
 	};
 	initializeLayers(context, null, rootLayers);
 	showProgress("Collecting layers...", context.total);
-	collectLayers(rootLayers, layers);
+	collectLayers(rootLayers, layers, []);
 
 	// Store the bones, slot names, and layers for each skin.
 	var bones = { _root: { name: "root", x: 0, y: 0, children: [] } };
@@ -109,7 +109,7 @@ function run () {
 	var skinDuplicates = {};
 	var totalLayerCount = 0;
 	outer:
-	for (var i = 0, n = layers.length; i < n; i++) {
+	for (var i = layers.length - 1; i >= 0; i--) {
 		if (cancel) return;
 		var layer = layers[i];
 
@@ -166,14 +166,29 @@ function run () {
 			bone.y -= (docHeight - yOffSet) * settings.scale;
 		}
 
-		var skinName = layer.findTagValue("skin");
-		if (skinName && skinName.toLowerCase() == "default") {
-			error("The skin name \"default\" is reserved: " + layer.path() + "\nPlease use a different name.");
-			continue;
+		var skinName = null;
+		var skinLayer = layer.findTagLayer("skin");
+		if (skinLayer) {
+			skinName = skinLayer.getTagValue("skin");
+			if (startsWith(skinName, "/"))
+				skinName = skinName.substring(1);
+			else if (skinLayer.parent)
+				skinName = skinLayer.parent.folders("") + skinName;
+			if (skinName && skinName.toLowerCase() == "default") {
+				error("The skin name \"default\" is reserved: " + layer.path() + "\nPlease use a different name.");
+				continue;
+			}
 		}
 		if (!skinName) skinName = "default";
 		layer.skinName = skinName;
-		layer.placeholderName = skinName == "default" ? layer.attachmentName : name;
+
+		if (skinName == "default")
+			layer.placeholderName = layer.attachmentName;
+		else if (!startsWith(layer.attachmentName, skinName + "/")) { // Should never happen.
+			error("Expected attachment name \"" + layer.attachmentName + "\" to start with skin name: " + skinName + "/");
+			continue;
+		} else
+			layer.placeholderName = layer.attachmentName.substring(skinName.length + 1);
 
 		layer.slotName = layer.findTagValue("slot") || name;
 		var slot = get(slots, layer.slotName);
@@ -267,7 +282,7 @@ function run () {
 	var n = errors.length;
 	if (n) {
 		var first = errors[0];
-		var file;
+		var file = null;
 		if (n > 1) {
 			try {
 				var all = "";
@@ -294,7 +309,6 @@ function run () {
 					first += "\n\nUnable to write " + (n - 1) + " additional errors to errors.txt.\n"+e;
 			}
 		}
-		alert(first);
 		if (file) file.execute();
 		return;
 	}
@@ -322,13 +336,19 @@ function run () {
 			for (var i = skinLayers.length - 1; i >= 0; i--) {
 				layerCount++;
 				var layer = skinLayers[i];
-				layer.setVisible(true);
+				layer.show();
 
 				incrProgress(layer.name);
 				if (cancel) return;
 
 				var attachmentName = layer.attachmentName, attachmentPath = layer.attachmentPath, placeholderName = layer.placeholderName;
-				var scale = layer.scale;
+				var scale = layer.scale, overlays = layer.overlays;
+
+				var trim = layer.findTagValue("trim");
+				if (trim != null)
+					trim = trim != "false";
+				else
+					trim = settings.trimWhitespace;
 
 				if (layer.isGroup) {
 					layer.select();
@@ -337,23 +357,30 @@ function run () {
 				}
 				layer.rasterizeStyles();
 
-				var width = layer.width, height = layer.height;
-				if (!width || !height) {
-					layer.deleteLayer();
+				for (var ii = 0, nn = overlays.length; ii < nn; ii++) {
+					var overlay = overlays[ii];
+					overlay.moveAbove(layer);
+					overlay.setClippingMask(true);
+					overlay.show();
+				}
+
+				if (!layer.width || !layer.height) {
+					layer.hide();
 					continue;
 				}
 				slot.attachments = true;
 
 				if (writeImages) storeHistory();
 
-				var x = layer.left, y = layer.top, docHeightCropped = docHeight;
-				if (settings.trimWhitespace) {
-					if (writeImages) {
-						activeDocument.crop([x - xOffSet, y - yOffSet, layer.right - xOffSet, layer.bottom - yOffSet], 0, width, height);
-						docHeightCropped = height;
-					}
-					x *= settings.scale;
-					y *= settings.scale;
+				var x, y, width, height, docHeightCropped = docHeight;
+				if (trim) {
+					activeDocument.trim(TrimType.TRANSPARENT, true, true, false, false);
+					x = (docWidth - activeDocument.width.as("px")) * settings.scale;
+					y = (docHeight - activeDocument.height.as("px")) * settings.scale;
+					activeDocument.trim(TrimType.TRANSPARENT, false, false, true, true);
+					width = activeDocument.width.as("px");
+					height = activeDocument.height.as("px");
+					docHeightCropped = height;
 				} else {
 					x = 0;
 					y = 0;
@@ -374,7 +401,7 @@ function run () {
 					restoreHistory();
 				}
 
-				if (layerCount < totalLayerCount) layer.deleteLayer();
+				if (layerCount < totalLayerCount) layer.hide();
 
 				x += Math.round(width) / 2 - settings.padding;
 				y = docHeightCropped - (y + Math.round(height) / 2 - settings.padding);
@@ -767,6 +794,8 @@ function showHelpDialog () {
 		+ "•  [skin] or [skin:name]  Layers are placed in a skin. Skin layer images are output in a subfolder for the skin.\n"
 		+ "•  [scale:number]  Layers are scaled. Their attachments are scaled inversely, so they appear the same size in Spine.\n"
 		+ "•  [folder] or [folder:name]  Layer images are output in a subfolder. Folder groups can be nested.\n"
+		+ "•  [overlay]  This layer is used as a clipping mask for all layers below.\n"
+		+ "•  [trim] or [trim:false]  Force this layer to be whitespace trimmed or not.\n"
 		+ "•  [ignore]  Layers, groups, and any child groups will not be output.\n"
 		+ "\n"
 		+ "Group names:\n"
@@ -860,25 +889,26 @@ function initializeLayers (context, parent, parentLayers) {
 	}
 }
 
-function collectLayers (parentLayers, collect) {
+function collectLayers (parentLayers, collect, overlays) {
 	outer:
-	for (var i = parentLayers.length - 1; i >= 0; i--) {
+	for (var i = 0, n = parentLayers.length; i < n; i++) {
 		if (cancel) return;
 		var layer = parentLayers[i];
 		incrProgress(layer.name);
 		if (settings.ignoreHiddenLayers && !layer.visible) continue;
 		if (settings.ignoreBackground && layer.background) {
-			layer.deleteLayer();
+			layer.hide();
 			continue;
 		}
 		if (layer.findTagLayer("ignore")) {
-			layer.deleteLayer();
+			layer.hide();
 			continue;
 		}
+		if (layer.adjustment || layer.clipping) continue;
 		if (!layer.isGroup && !layer.isNormal()) {
 			layer.rasterize(); // In case rasterizeAll failed.
 			if (!layer.isNormal()) {
-				layer.deleteLayer();
+				layer.hide();
 				continue;
 			}
 		}
@@ -910,20 +940,34 @@ function collectLayers (parentLayers, collect) {
 			}
 		}
 
+		if (layer.findTagLayer("overlay")) {
+			if (!layer.visible) continue;
+			if (layer.isGroup) {
+				layer.select();
+				merge();
+				layer = new Layer(layer.id, layer.parent);
+			}
+			layer.setLocked(false);
+			layer.hide();
+			overlays.push(layer);
+			continue;
+		}
+
 		layer.wasVisible = layer.visible;
-		layer.setVisible(true);
+		layer.show();
 		layer.setLocked(false);
 
 		if (layer.isGroup && layer.findTagLayer("merge")) {
 			collectGroupMerge(layer);
 			if (!layer.layers || layer.layers.length == 0) continue;
 		} else if (layer.layers && layer.layers.length > 0) {
-			collectLayers(layer.layers, collect);
+			collectLayers(layer.layers, collect, overlays);
 			continue;
 		} else if (layer.isGroup)
 			continue;
 
-		layer.setVisible(false);
+		layer.overlays = overlays.slice();
+		layer.hide();
 		collect.push(layer);
 	}
 }
@@ -935,7 +979,7 @@ function collectGroupMerge (parent) {
 		var layer = parentLayers[i];
 		if (settings.ignoreHiddenLayers && !layer.visible) continue;
 		if (layer.findTagLayer("ignore")) {
-			layer.deleteLayer();
+			layer.hide();
 			continue;
 		}
 		collectGroupMerge(layer);
@@ -953,6 +997,8 @@ function isValidLayerTag (tag) {
 	case "skin":
 	case "folder":
 	case "ignore":
+	case "overlay":
+	case "trim":
 		return true;
 	}
 	if (startsWith(tag, "bone:")) return true;
@@ -961,6 +1007,7 @@ function isValidLayerTag (tag) {
 	if (startsWith(tag, "folder:")) return true;
 	if (startsWith(tag, "path:")) return true;
 	if (startsWith(tag, "scale:")) return true;
+	if (startsWith(tag, "trim:")) return true;
 	return false;
 }
 
@@ -970,7 +1017,7 @@ function stripTags (name) {
 
 function jsonPath (jsonPath) {
 	if (endsWith(jsonPath, ".json")) {
-		var index = jsonPath.replace(/\\/g, "/").lastIndexOf("/");
+		var index = forwardSlashes(jsonPath).lastIndexOf("/");
 		if (index != -1) return absolutePath(jsonPath.slice(0, index + 1)) + jsonPath.slice(index + 1);
 		return absolutePath("./") + jsonPath;
 	} 
@@ -1072,10 +1119,10 @@ function scriptDir () {
 }
 
 function absolutePath (path) {
-	path = trim(path);
+	path = forwardSlashes(trim(path));
 	if (!startsWith(path, "./")) {
-		var absolute = decodeURI(new File(path).absoluteURI);
-		if (!startsWith(absolute, decodeURI(new File("child").parent.absoluteURI))) return absolute + "/";
+		var absolute = decodeURI(new File(path).fsName);
+		if (!startsWith(absolute, decodeURI(new File("child").parent.fsName))) return forwardSlashes(absolute) + "/";
 		path = "./" + path;
 	}
 	if (path.length == 0)
@@ -1083,7 +1130,7 @@ function absolutePath (path) {
 	else if (startsWith(path, "./"))
 		path = decodeURI(activeDocument.path) + path.substring(1);
 	path = (new File(path).fsName).toString();
-	path = path.replace(/\\/g, "/");
+	path = forwardSlashes(path);
 	if (path.substring(path.length - 1) != "/") path += "/";
 	return path;
 }
@@ -1097,7 +1144,9 @@ function deselectLayers () {
 	ref.putEnumerated(cID("Lyr "), cID("Ordn"), cID("Trgt"));
 	var desc = new ActionDescriptor();
 	desc.putReference(cID("null"), ref);
-	executeAction(sID("selectNoLayers"), desc, DialogModes.NO);
+	try {
+		executeAction(sID("selectNoLayers"), desc, DialogModes.NO);
+	} catch (ignored) {} // Fails if only background layer.
 }
 
 function convertToRGB () {
@@ -1144,17 +1193,18 @@ function getLayerID (index) {
 }
 
 function hasBackgroundLayer () {
-	try {
-		var ref = new ActionReference ()
-		ref.putEnumerated(sID("document"), sID("ordinal"), sID("targetEnum"));
-		return executeActionGet(ref).getBoolean(sID("hasBackgroundLayer"));
-	} catch (e) { // CS2.
-		try {
-			return activeDocument.backgroundLayer;
-		} catch (ignored) {
-		}
-		return false;
-	}
+   try {
+      var ref = new ActionReference(); 
+      ref.putProperty(cID("Prpr"), sID("hasBackgroundLayer")); 
+      ref.putEnumerated(cID("Dcmn"), cID("Ordn"), cID("Trgt"));
+      return executeActionGet(ref).getBoolean(sID("hasBackgroundLayer"));
+   } catch (e) { // CS2.
+      try {
+         return activeDocument.backgroundLayer;
+      } catch (ignored) {
+      }
+      return false;
+   }
 }
 
 function typeToMethod (type) {
@@ -1216,8 +1266,13 @@ function Layer (id, parent) {
 	this.background = this.get("background", "Boolean");
 	this.locked = this.get("layerLocking", "ObjectValue").getBoolean(sID("protectAll"));
 	this.blendMode = typeIDToStringID(this.get("mode", "EnumerationValue"));
+	this.clipping = this.get("group", "Boolean");
 
-	var bounds = this.get("bounds", "ObjectValue");
+	this.adjustment = this.get("layerKind", "Integer", function () {
+		return 0;
+	}) == 2/*kAdjustmentSheet*/;
+
+	var bounds = this.get("bounds", "ObjectValue"); // Not tightly fitting if there are layer styles.
 	this.top = bounds.getDouble(sID("top"));
 	this.left = bounds.getDouble(sID("left"));
 	this.bottom = bounds.getDouble(sID("bottom"));
@@ -1253,12 +1308,26 @@ Layer.prototype.has = function (name) {
 	return false;
 };
 
+Layer.prototype.getIndex = function () {
+	return this.get("itemIndex", "Integer");
+};
+
 Layer.prototype.isNormal = function () {
 	var layer = this;
 	return this.get("layerKind", "Integer", function () {
-		return layer.has("smartObject") ? 0 : 1;
-	}) == 1;
-}
+		return layer.has("smartObject") ? 5/*kSmartObjectSheet*/ : 1/*kPixelSheet*/;
+	}) == 1/*kPixelSheet*/;
+};
+
+Layer.prototype.setClippingMask = function (clipping) {
+	var ref = new ActionReference();
+	ref.putIdentifier(cID("Lyr "), this.id);
+	var desc = new ActionDescriptor();
+	desc.putReference(cID("null"), ref);
+	try {
+		executeAction(cID(clipping ? "GrpL" : "Ungr"), desc, DialogModes.NO);
+	} catch (ignored) {} // Fails if already in the desired state.
+};
 
 Layer.prototype.setVisible = function (visible) {
 	if (this.visible == visible) return;
@@ -1268,6 +1337,14 @@ Layer.prototype.setVisible = function (visible) {
 	var desc = new ActionDescriptor();
 	desc.putReference(cID("null"), ref);
 	executeAction(cID(visible ? "Shw " : "Hd  "), desc, DialogModes.NO);
+};
+
+Layer.prototype.hide = function () {
+	this.setVisible(false);
+};
+
+Layer.prototype.show = function () {
+	this.setVisible(true);
 };
 
 Layer.prototype.setLocked = function (locked) {
@@ -1289,6 +1366,18 @@ Layer.prototype.unlock = function () {
 	for (var i = this.layers.length - 1; i >= 0; i--)
 		this.layers[i].unlock();
 };
+
+Layer.prototype.moveAbove = function (otherLayer) {
+	var ref1 = new ActionReference();
+	ref1.putIdentifier(cID("Lyr "), this.id);
+	var ref2 = new ActionReference();
+	ref2.putIndex(cID("Lyr "), otherLayer.getIndex());
+	var desc = new ActionDescriptor();
+	desc.putReference(cID("null"), ref1);
+	desc.putReference(cID("T   "), ref2);
+	desc.putBoolean(cID("Adjs"), false);
+	executeAction(cID("move"), desc, DialogModes.NO);
+}
 
 Layer.prototype.deleteLayer = function () {
 	this.unlock();
@@ -1351,11 +1440,15 @@ Layer.prototype.findTagLayer = function (tag) {
 Layer.prototype.findTagValue = function (tag) {
 	var layer = this.findTagLayer(tag);
 	if (!layer) return null;
-	if (endsWith(tag, ":")) tag = tag.slice(0, -1);
-	var matches = new RegExp("\\[" + tag + ":([^\\]]+)\\]", "i").exec(layer.name);
-	if (matches && matches.length) return trim(matches[1]);
-	return stripTags(layer.name);
+	return layer.getTagValue(tag);
 };
+
+Layer.prototype.getTagValue = function (tag) {
+	if (endsWith(tag, ":")) tag = tag.slice(0, -1);
+	var matches = new RegExp("\\[" + tag + ":([^\\]]+)\\]", "i").exec(this.name);
+	if (matches && matches.length) return trim(matches[1]);
+	return stripTags(this.name);
+}
 
 Layer.prototype.getParentBone = function (bones) {
 	var parentName = this.parent ? this.parent.findTagValue("bone") : null;
@@ -1446,6 +1539,10 @@ function endsWith (str, suffix) {
 
 function quote (value) {
 	return '"' + value.replace(/"/g, '\\"') + '"';
+}
+
+function forwardSlashes (path) {
+	return path.replace(/\\/g, "/");
 }
 
 showSettingsDialog();
