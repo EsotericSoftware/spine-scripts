@@ -13,7 +13,7 @@ app.bringToFront();
 //     * Neither the name of Esoteric Software nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-var scriptVersion = 7.21; // This is incremented every time the script is modified, so you know if you have the latest.
+var scriptVersion = 7.22; // This is incremented every time the script is modified, so you know if you have the latest.
 
 var cs2 = parseInt(app.version) < 10, cID = charIDToTypeID, sID = stringIDToTypeID;
 
@@ -156,6 +156,7 @@ function run () {
 				set(bones, boneName, bone = { name: boneName, parent: parent, children: [], layer: boneLayer });
 				parent.children.push(bone);
 			}
+			layer.updateBounds();
 			bone.x = layer.left * settings.scale - settings.padding;
 			bone.x += layer.width * settings.scale / 2 + settings.padding;
 			bone.y = layer.bottom * settings.scale + settings.padding;
@@ -309,6 +310,7 @@ function run () {
 					first += "\n\nUnable to write " + (n - 1) + " additional errors to errors.txt.\n"+e;
 			}
 		}
+		alert(first);
 		if (file) file.execute();
 		return;
 	}
@@ -364,6 +366,7 @@ function run () {
 					overlay.show();
 				}
 
+				layer.updateBounds();
 				if (!layer.width || !layer.height) {
 					layer.hide();
 					continue;
@@ -372,20 +375,22 @@ function run () {
 
 				if (writeImages) storeHistory();
 
-				var x, y, width, height, docHeightCropped = docHeight;
+				var x, y, width, height, docHeightCropped;
 				if (trim) {
-					activeDocument.trim(TrimType.TRANSPARENT, true, true, false, false);
-					x = (docWidth - activeDocument.width.as("px")) * settings.scale;
-					y = (docHeight - activeDocument.height.as("px")) * settings.scale;
-					activeDocument.trim(TrimType.TRANSPARENT, false, false, true, true);
-					width = activeDocument.width.as("px");
-					height = activeDocument.height.as("px");
+					x = layer.left;
+					y = layer.top;
+					width = layer.width;
+					height = layer.height;
+					activeDocument.crop([x - xOffSet, y - yOffSet, layer.right - xOffSet, layer.bottom - yOffSet], 0, width, height);
+					x *= settings.scale;
+					y *= settings.scale;
 					docHeightCropped = height;
 				} else {
 					x = 0;
 					y = 0;
 					width = docWidth - xOffSet * settings.scale;
 					height = docHeight - yOffSet * settings.scale;
+					docHeightCropped = docHeight;
 				}
 				width = width * settings.scale + settings.padding * 2;
 				height = height * settings.scale + settings.padding * 2;
@@ -1272,14 +1277,7 @@ function Layer (id, parent) {
 		return 0;
 	}) == 2/*kAdjustmentSheet*/;
 
-	var bounds = this.get("bounds", "ObjectValue"); // Not tightly fitting if there are layer styles.
-	this.top = bounds.getDouble(sID("top"));
-	this.left = bounds.getDouble(sID("left"));
-	this.bottom = bounds.getDouble(sID("bottom"));
-	this.right = bounds.getDouble(sID("right"));
-	this.width = this.right - this.left;
-	this.height = this.bottom - this.top;
-
+	this.boundsDirty = true;
 	if (this.isGroup) this.layers = [];
 }
 
@@ -1402,6 +1400,7 @@ Layer.prototype.rasterizeStyles = function () {
 	newLayerBelow(this.name);
 	this.select(true);
 	merge();
+	this.boundsDirty = true;
 
 	// Rasterizing styles may not give the desired results in all cases, merge does.
 	//var ref = new ActionReference();
@@ -1414,6 +1413,18 @@ Layer.prototype.rasterizeStyles = function () {
 	//	executeAction(sID("rasterizeLayer"), desc, DialogModes.NO);
 	//}
 };
+
+Layer.prototype.updateBounds = function () {
+	if (!this.boundsDirty) return;
+	this.boundsDirty = false;
+	var bounds = this.get("boundsNoEffects", "ObjectValue"); // Not tightly fitting if there are layer styles.
+	this.top = bounds.getDouble(sID("top"));
+	this.left = bounds.getDouble(sID("left"));
+	this.bottom = bounds.getDouble(sID("bottom"));
+	this.right = bounds.getDouble(sID("right"));
+	this.width = this.right - this.left;
+	this.height = this.bottom - this.top;
+}
 
 Layer.prototype.select = function (add) {
 	var ref = new ActionReference();
