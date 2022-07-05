@@ -13,11 +13,11 @@ app.bringToFront();
 //     * Neither the name of Esoteric Software nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-var scriptVersion = 7.23; // This is incremented every time the script is modified, so you know if you have the latest.
+var scriptVersion = 7.24; // This is incremented every time the script is modified, so you know if you have the latest.
 
 var cs2 = parseInt(app.version) < 10, cID = charIDToTypeID, sID = stringIDToTypeID;
 
-var originalDoc, settings, progress, cancel, errors;
+var originalDoc, settings, progress, cancel, errors, lastLayerName;
 try {
 	originalDoc = activeDocument;
 } catch (ignored) {}
@@ -433,6 +433,7 @@ function run () {
 		}
 		if (jsonSkin) jsonSkins += '\t"' + skinName + '": {\n' + jsonSkin.substring(0, jsonSkin.length - 2) + '\n\t},\n';
 	}
+	lastLayerName = null;
 
 	activeDocument.close(SaveOptions.DONOTSAVECHANGES);
 
@@ -727,8 +728,9 @@ function showSettingsDialog () {
 			//alert((new Date().getTime() - start) / 1000 + "s");
 		} catch (e) {
 			if (e.message == "User cancelled the operation") return;
-			alert("An unexpected error has occurred:\n\n[line " + e.line + "] " + e.message + "\n\nTo debug, run the PhotoshopToSpine script using Adobe ExtendScript "
-				+ "with \"Debug > Do not break on guarded exceptions\" unchecked.");
+			var layerMessage = lastLayerName ? "[layer " + lastLayerName + "] " : "";
+			alert("An unexpected error has occurred:\n\n" + layerMessage + "[line: " + e.line + "] " + e.message
+				+ "\n\nTo debug, run the PhotoshopToSpine script using Adobe ExtendScript with \"Debug > Do not break on guarded exceptions\" unchecked.");
 			debugger;
 		} finally {
 			if (activeDocument != originalDoc) activeDocument.close(SaveOptions.DONOTSAVECHANGES);
@@ -868,16 +870,16 @@ function showProgress (title, total) {
 	var reset = $.hiresTimer;
 }
 
-function incrProgress (text) {
+function incrProgress (layerName) {
+	lastLayerName = trim(layerName);
 	progress.count++;
 	if (progress.count != 1 && progress.count < progress.total) {
 		progress.updateTime += $.hiresTimer;
 		if (progress.updateTime < 500000) return;
 		progress.updateTime = 0;
 	}
-	text = progress.count + " / "+ progress.total + ": " + trim(text);
 	progress.bar.value = progress.count;
-	progress.message.text = text;
+	progress.message.text = progress.count + " / "+ progress.total + ": " + lastLayerName;
 	if (!progress.dialog.active) progress.dialog.active = true;
 }
 
@@ -1397,6 +1399,9 @@ Layer.prototype.rasterize = function () {
 Layer.prototype.rasterizeStyles = function () {
 	if (!this.has("layerEffects")) return;
 	this.select();
+	try {
+		merge(); // Merges any clipping masks.
+	} catch (ignored) {}
 	newLayerBelow(this.name);
 	this.select(true);
 	merge();
