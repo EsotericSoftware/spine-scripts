@@ -13,9 +13,9 @@ app.bringToFront();
 //     * Neither the name of Esoteric Software nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-var scriptVersion = 7.24; // This is incremented every time the script is modified, so you know if you have the latest.
+var scriptVersion = 7.25; // This is incremented every time the script is modified, so you know if you have the latest.
 
-var cs2 = parseInt(app.version) < 10, cID = charIDToTypeID, sID = stringIDToTypeID;
+var cs2 = parseInt(app.version) < 10, cID = charIDToTypeID, sID = stringIDToTypeID, tID = typeIDToStringID;
 
 var originalDoc, settings, progress, cancel, errors, lastLayerName;
 try {
@@ -28,6 +28,7 @@ var defaultSettings = {
 	writeTemplate: false,
 	writeJson: true,
 	trimWhitespace: true,
+	selectionOnly: false,
 	scale: 1,
 	padding: 1,
 	imagesDir: "./images/",
@@ -37,6 +38,15 @@ loadSettings();
 
 function run () {
 	showProgress();
+
+	var selectedLayers;
+	if (settings.selectionOnly) {
+		selectedLayers = getSelectedLayers();
+		if (!selectedLayers.length) {
+			alert("At least one layer must be selected when \"Selection only\" is checked.");
+			return;
+		}
+	}
 
 	errors = [];
 
@@ -98,7 +108,7 @@ function run () {
 		index: getLayerCount() - 1,
 		total: 0
 	};
-	initializeLayers(context, null, rootLayers);
+	initializeLayers(context, selectedLayers, null, rootLayers);
 	showProgress("Collecting layers...", context.total);
 	collectLayers(rootLayers, layers, []);
 
@@ -355,7 +365,7 @@ function run () {
 				if (layer.isGroup) {
 					layer.select();
 					merge();
-					layer = new Layer(layer.id, layer.parent);
+					layer = new Layer(layer.id, layer.parent, layer.selected);
 				}
 				layer.rasterizeStyles();
 
@@ -550,6 +560,8 @@ function showSettingsDialog () {
 				writeJsonCheckbox.value = settings.writeJson;
 				var writeTemplateCheckbox = group.add("checkbox", undefined, " Write template image");
 				writeTemplateCheckbox.value = settings.writeTemplate;
+				var selectionOnlyCheckbox = group.add("checkbox", undefined, " Selection only");
+				selectionOnlyCheckbox.value = settings.selectionOnly;
 		var scaleText, paddingText, scaleSlider, paddingSlider;
 		if (!cs2) {
 			var slidersGroup = settingsGroup.add("group");
@@ -593,6 +605,7 @@ function showSettingsDialog () {
 		trimWhitespaceCheckbox.preferredSize.width = 150;
 		writeJsonCheckbox.preferredSize.width = 150;
 		writeTemplateCheckbox.preferredSize.width = 150;
+		selectionOnlyCheckbox.preferredSize.width = 150;
 	}
 
 	var outputPathGroup = dialog.add("panel", undefined, "Output Paths");
@@ -638,6 +651,7 @@ function showSettingsDialog () {
 	writeTemplateCheckbox.helpTip = "When checked, a PNG is written for the currently visible layers.";
 	writeJsonCheckbox.helpTip = "When checked, a Spine JSON file is written.";
 	trimWhitespaceCheckbox.helpTip = "When checked, blank pixels around the edges of each image are removed.";
+	selectionOnlyCheckbox.helpTip = "When checked, only the selected items are processed.";
 	scaleSlider.helpTip = "Scales the PNG files. Useful when using higher resolution art in Photoshop than in Spine.";
 	paddingSlider.helpTip = "Blank pixels around the edge of each image. Can avoid aliasing artifacts for opaque pixels along the image edge.";
 	imagesDirText.helpTip = "The folder to write PNGs. Begin with \"./\" to be relative to the PSD file. Blank to disable writing PNGs.";
@@ -681,6 +695,7 @@ function showSettingsDialog () {
 		settings.writeTemplate = writeTemplateCheckbox.value;
 		settings.writeJson = writeJsonCheckbox.value;
 		settings.trimWhitespace = trimWhitespaceCheckbox.value;
+		settings.selectionOnly = selectionOnlyCheckbox.value;
 
 		var scaleValue = parseFloat(scaleText.text);
 		if (scaleValue > 0 && scaleValue <= 100) settings.scale = scaleValue / 100;
@@ -710,6 +725,7 @@ function showSettingsDialog () {
 		writeTemplateCheckbox.enabled = false;
 		writeJsonCheckbox.enabled = false;
 		trimWhitespaceCheckbox.enabled = false;
+		selectionOnlyCheckbox.enabled = false;
 		scaleText.enabled = false;
 		scaleSlider.enabled = false;
 		paddingText.enabled = false;
@@ -885,14 +901,27 @@ function incrProgress (layerName) {
 
 // PhotoshopToSpine utility:
 
-function initializeLayers (context, parent, parentLayers) {
+function initializeLayers (context, selectedLayers, parent, parentLayers) {
 	while (context.index >= context.first) {
 		if (cancel) return -1;
-		var layer = new Layer(getLayerID(context.index--), parent);
+
+		var id = getLayerID(context.index--);
+
+		var selected = parent && parent.selected;
+		if (selectedLayers && !selected) {
+			for (var i = 0, n = selectedLayers.length; i < n; i++) {
+				if (selectedLayers[i] === id) {
+					selected = true;
+					break;
+				}
+			}
+		}
+
+		var layer = new Layer(id, parent, selected);
 		if (layer.isGroupEnd) break;
 		context.total++;
 		parentLayers.push(layer);
-		if (layer.isGroup) initializeLayers(context, layer, layer.layers);
+		if (layer.isGroup) initializeLayers(context, selectedLayers, layer, layer.layers);
 	}
 }
 
@@ -902,6 +931,16 @@ function collectLayers (parentLayers, collect, overlays) {
 		if (cancel) return;
 		var layer = parentLayers[i];
 		incrProgress(layer.name);
+
+		if (settings.selectionOnly && !layer.selected) {
+			var merge = layer.isGroup && (layer.findTagLayer("merge") || layer.findTagLayer("overlay"));
+			if (!merge && layer.layers && layer.layers.length > 0)
+				collectLayers(layer.layers, collect, overlays);
+			else
+				layer.hide();
+			continue;
+		}
+
 		if (settings.ignoreHiddenLayers && !layer.visible) continue;
 		if (settings.ignoreBackground && layer.background) {
 			layer.hide();
@@ -952,7 +991,7 @@ function collectLayers (parentLayers, collect, overlays) {
 			if (layer.isGroup) {
 				layer.select();
 				merge();
-				layer = new Layer(layer.id, layer.parent);
+				layer = new Layer(layer.id, layer.parent, layer.selected);
 			}
 			layer.setLocked(false);
 			layer.hide();
@@ -1214,6 +1253,19 @@ function hasBackgroundLayer () {
    }
 }
 
+function getSelectedLayers () {
+	var layers = [];
+	var ref = new ActionReference();
+	ref.putEnumerated(cID("Dcmn"), cID("Ordn"), cID("Trgt"));
+	var desc = executeActionGet(ref);
+	if (desc.hasKey(sID("targetLayers"))) {
+		desc = desc.getList(sID("targetLayers"));
+		for (var i = 0, n = desc.count; i < n; i++)
+			layers.push(getLayerID(desc.getReference(i).getIndex() + 1));
+	}
+	return layers;
+}
+
 function typeToMethod (type) {
 	if (type == "DescValueType.ENUMERATEDTYPE") return "EnumerationValue";
 	if (type == "DescValueType.OBJECTTYPE") return "ObjectValue";
@@ -1237,7 +1289,7 @@ function properties (object, indent) {
 		var key = object.getKey(i);
 		var type = typeToMethod(object.getType(key));
 		var value = object["get" + type](key);
-		if (type == "EnumerationValue") value = typeIDToStringID(value);
+		if (type == "EnumerationValue") value = tID(value);
 		else if (type == "ObjectValue") value = "{\n" + properties(value, indent + 1) + "}";
 		else if (type == "List") {
 			var items = "";
@@ -1250,20 +1302,21 @@ function properties (object, indent) {
 		}
 		for (var ii = 0; ii < indent; ii++)
 			text += "  ";
-		text += typeIDToStringID(key) + ": " + value + " (" + type + ")\n";
+		text += tID(key) + ": " + value + " (" + type + ")\n";
 	}
 	return text;
 }
 
 // Layer class.
 
-function Layer (id, parent) {
+function Layer (id, parent, selected) {
 	this.id = id;
 	this.parent = parent;
+	this.selected = selected;
 
 	this.name = this.get("name", "String");
 
-	var type = typeIDToStringID(this.get("layerSection", "EnumerationValue"));
+	var type = tID(this.get("layerSection", "EnumerationValue"));
 	this.isGroupEnd = type == "layerSectionEnd";
 	if (this.isGroupEnd) return;
 	this.isGroup = type == "layerSectionStart";
@@ -1272,7 +1325,7 @@ function Layer (id, parent) {
 	this.visible = this.get("visible", "Boolean");
 	this.background = this.get("background", "Boolean");
 	this.locked = this.get("layerLocking", "ObjectValue").getBoolean(sID("protectAll"));
-	this.blendMode = typeIDToStringID(this.get("mode", "EnumerationValue"));
+	this.blendMode = tID(this.get("mode", "EnumerationValue"));
 	this.clipping = this.get("group", "Boolean");
 
 	this.adjustment = this.get("layerKind", "Integer", function () {
