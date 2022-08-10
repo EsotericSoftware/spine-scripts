@@ -29,10 +29,10 @@ def merge_layers(layer):
         layer_copy.name = "[ignore]" + layer.name
         index = 0
         if layer.parent:
-        for i in layer.parent.children:
-            if i.name == layer.name:
-                break
-            index += 1
+            for i in layer.parent.children:
+                if i.name == layer.name:
+                    break
+                index += 1
         layer.name = layer.name.replace('[merge]', '').strip()
         pdb.gimp_image_insert_layer(layer.image, layer_copy, layer.parent, index)
         temp_layer = pdb.gimp_image_merge_layer_group(layer.image, layer)
@@ -101,7 +101,7 @@ def spine_export(img, active_layer, compression, dir_name, crop_layers):
 
     # Write the JSON output
     try:
-    name = os.path.splitext(os.path.basename(img.filename))[0]
+        name = os.path.splitext(os.path.basename(img.filename))[0]
     except Exception:
         name = "not_saved"
     with open(os.path.join(dir_name, '%s.json' % name), 'w') as json_file:
