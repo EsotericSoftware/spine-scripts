@@ -33,6 +33,7 @@ var defaultSettings = {
 	padding: 1,
 	imagesDir: "./images/",
 	jsonPath: "./",
+	legacyjson: false,
 };
 loadSettings();
 
@@ -431,17 +432,23 @@ function run () {
 					x -= bone.x;
 					y -= bone.y;
 				}
-
-				jsonSlot += "\t\t\t\t" + quote(placeholderName) + ': { ';
+				var alignmentChar = settings.legacyjson ? '' : '\t';
+				jsonSlot += "\t\t\t" + alignmentChar + quote(placeholderName) + ': { ';
 				if (attachmentName != placeholderName) jsonSlot += '"name": ' + quote(attachmentName) + ', ';
 				if (attachmentName != attachmentPath) jsonSlot += '"path": ' + quote(attachmentPath) + ', ';
 				jsonSlot += '"x": ' + x + ', "y": ' + y + ', "width": ' + Math.round(width) + ', "height": ' + Math.round(height);
 				if (scale != 1) jsonSlot += ', "scaleX": ' + (1 / scale) + ', "scaleY": ' + (1 / scale);
 				jsonSlot += ' },\n';
 			}
-			if (jsonSlot) jsonSkin += '\t\t\t' + quote(slotName) + ': {\n' + jsonSlot.substring(0, jsonSlot.length - 2) + '\n\t\t\t\},\n';
+			if (jsonSlot) jsonSkin += '\t\t' + alignmentChar + quote(slotName) + ': {\n' + jsonSlot.substring(0, jsonSlot.length - 2) + '\n\t\t' + alignmentChar + '\},\n';
 		}
-		if (jsonSkin) jsonSkins += '\t{\n\t\t"name": ' + quote(skinName) + ',\n\t\t"attachments": {\n' + jsonSkin.substring(0, jsonSkin.length - 2) + '\n\t\t}\n\t},\n';
+		if (jsonSkin) {
+			if(settings.legacyjson) {
+				jsonSkins += '\t"' + skinName + '": {\n' + jsonSkin.substring(0, jsonSkin.length - 2) + '\n\t},\n';
+			} else {
+				jsonSkins += '\t{\n\t\t"name": ' + quote(skinName) + ',\n\t\t"attachments": {\n' + jsonSkin.substring(0, jsonSkin.length - 2) + '\n\t\t}\n\t},\n';
+			}
+		}
 	}
 	lastLayerName = null;
 
@@ -491,7 +498,13 @@ function run () {
 		json += slotIndex < slotsCount ? ',\n' : '\n';
 	}
 	json += '],\n';
-	if (jsonSkins) json += '"skins": [\n' + jsonSkins.substring(0, jsonSkins.length - 2) + '\n],\n';
+	if (jsonSkins) {
+		if(settings.legacyjson) {
+			json += '"skins": {\n' + jsonSkins.substring(0, jsonSkins.length - 2) + '\n},\n';
+		} else {
+			json += '"skins": [\n' + jsonSkins.substring(0, jsonSkins.length - 2) + '\n],\n';
+		}
+	}
 	json += '"animations": { "animation": {} }\n}';
 
 	// Output JSON file.
@@ -562,6 +575,8 @@ function showSettingsDialog () {
 				writeTemplateCheckbox.value = settings.writeTemplate;
 				var selectionOnlyCheckbox = group.add("checkbox", undefined, " Selection only");
 				selectionOnlyCheckbox.value = settings.selectionOnly;
+				var legacyjsonCheckbox = group.add("checkbox", undefined, " Use legacy json format");
+				legacyjsonCheckbox.value = settings.legacyjson;
 		var scaleText, paddingText, scaleSlider, paddingSlider;
 		if (!cs2) {
 			var slidersGroup = settingsGroup.add("group");
@@ -606,6 +621,7 @@ function showSettingsDialog () {
 		writeJsonCheckbox.preferredSize.width = 150;
 		writeTemplateCheckbox.preferredSize.width = 150;
 		selectionOnlyCheckbox.preferredSize.width = 150;
+		legacyjsonCheckbox.preferredSize.width = 150;
 	}
 
 	var outputPathGroup = dialog.add("panel", undefined, "Output Paths");
@@ -656,7 +672,7 @@ function showSettingsDialog () {
 	paddingSlider.helpTip = "Blank pixels around the edge of each image. Can avoid aliasing artifacts for opaque pixels along the image edge.";
 	imagesDirText.helpTip = "The folder to write PNGs. Begin with \"./\" to be relative to the PSD file. Blank to disable writing PNGs.";
 	jsonPathText.helpTip = "Output JSON file if ending with \".json\", else the folder to write the JSON file. Begin with \"./\" to be relative to the PSD file. Blank to disable writing a JSON file.";
-
+	legacyjsonCheckbox.helpTip = "When checked, the json structure will use old formmating (using dict by names instead of list of dict for the skins).";
 	// Events.
 	scaleText.onChanging = function () { scaleSlider.value = scaleText.text; };
 	scaleSlider.onChanging = function () { scaleText.text = Math.round(scaleSlider.value); };
@@ -696,6 +712,7 @@ function showSettingsDialog () {
 		settings.writeJson = writeJsonCheckbox.value;
 		settings.trimWhitespace = trimWhitespaceCheckbox.value;
 		settings.selectionOnly = selectionOnlyCheckbox.value;
+		settings.legacyjson = legacyjsonCheckbox.value;
 
 		var scaleValue = parseFloat(scaleText.text);
 		if (scaleValue > 0 && scaleValue <= 100) settings.scale = scaleValue / 100;
@@ -726,6 +743,7 @@ function showSettingsDialog () {
 		writeJsonCheckbox.enabled = false;
 		trimWhitespaceCheckbox.enabled = false;
 		selectionOnlyCheckbox.enabled = false;
+		legacyjsonCheckbox.enabled = false;
 		scaleText.enabled = false;
 		scaleSlider.enabled = false;
 		paddingText.enabled = false;
