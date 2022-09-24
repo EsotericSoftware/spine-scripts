@@ -13,7 +13,7 @@ app.bringToFront();
 //     * Neither the name of Esoteric Software nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-var scriptVersion = 7.25; // This is incremented every time the script is modified, so you know if you have the latest.
+var scriptVersion = 7.26; // This is incremented every time the script is modified, so you know if you have the latest.
 
 var cs2 = parseInt(app.version) < 10, cID = charIDToTypeID, sID = stringIDToTypeID, tID = typeIDToStringID;
 
@@ -1136,6 +1136,22 @@ function merge () {
 	executeAction(cID("Mrg2"), undefined, DialogModes.NO);
 }
 
+// Layer must be selected.
+function channelBounds (name) {
+	try {
+		var ref1 = new ActionReference();
+		ref1.putProperty(sID("channel"), sID("selection"));
+		var ref2 = new ActionReference();
+		ref2.putEnumerated(sID("channel"), sID("channel"), sID(name));
+		var desc = new ActionDescriptor();
+		desc.putReference(sID("null"), ref1);
+		desc.putReference(sID("to"), ref2);
+		executeAction(sID("set"), desc, DialogModes.NO);
+		return activeDocument.selection.bounds;
+	} catch (ignored) {}
+	return null;
+}
+
 function scaleImage (scale) {
 	if (scale == 1) return;
 	var imageSize = activeDocument.width.as("px") * scale;
@@ -1327,6 +1343,7 @@ function Layer (id, parent, selected) {
 	this.locked = this.get("layerLocking", "ObjectValue").getBoolean(sID("protectAll"));
 	this.blendMode = tID(this.get("mode", "EnumerationValue"));
 	this.clipping = this.get("group", "Boolean");
+	this.mask = this.get("hasUserMask", "Boolean");
 
 	this.adjustment = this.get("layerKind", "Integer", function () {
 		return 0;
@@ -1477,15 +1494,27 @@ Layer.prototype.updateBounds = function () {
 	this.boundsDirty = false;
 
 	var bounds;
-	try {
-		bounds = this.get("boundsNoEffects", "ObjectValue");
-	} catch (e) { // CS2.
-		bounds = this.get("bounds", "ObjectValue"); // Not tightly fitting if there are layer styles.
+	if (this.mask) {
+		this.select();
+		bounds = channelBounds("mask");
+		if (bounds) {
+			this.left = bounds[0].as("px");
+			this.top = bounds[1].as("px");
+			this.right = bounds[2].as("px");
+			this.bottom = bounds[3].as("px");
+		}
 	}
-	this.top = bounds.getDouble(sID("top"));
-	this.left = bounds.getDouble(sID("left"));
-	this.bottom = bounds.getDouble(sID("bottom"));
-	this.right = bounds.getDouble(sID("right"));
+	if (!bounds) {
+		try {
+			bounds = this.get("boundsNoEffects", "ObjectValue");
+		} catch (e) { // CS2.
+			bounds = this.get("bounds", "ObjectValue"); // Not tightly fitting if there are layer styles.
+		}
+		this.left = bounds.getDouble(sID("left"));
+		this.top = bounds.getDouble(sID("top"));
+		this.right = bounds.getDouble(sID("right"));
+		this.bottom = bounds.getDouble(sID("bottom"));
+	}
 	this.width = this.right - this.left;
 	this.height = this.bottom - this.top;
 }
