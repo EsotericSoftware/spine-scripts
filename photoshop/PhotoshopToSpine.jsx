@@ -14,7 +14,7 @@ app.bringToFront();
 //     * Neither the name of Esoteric Software nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-var scriptVersion = 7.27; // This is incremented every time the script is modified, so you know if you have the latest.
+var scriptVersion = 7.28; // This is incremented every time the script is modified, so you know if you have the latest.
 
 var revealAll = false; // Set to true to enlarge the canvas so layers are not cropped.
 var legacyJson = false; // Set to true to output the old Spine JSON format.
@@ -204,6 +204,8 @@ function run () {
 		} else
 			layer.placeholderName = layer.attachmentName.substring(skinName.length + 1);
 
+		layer.mesh = layer.findTagValue("mesh", true);
+
 		layer.slotName = layer.findTagValue("slot") || name;
 		var slot = get(slots, layer.slotName);
 		if (!slot) {
@@ -212,10 +214,12 @@ function run () {
 				bone: bone,
 				attachment: layer.wasVisible ? layer.placeholderName : null,
 				placeholders: {},
-				attachments: false
+				attachments: false,
+				layers: {}
 			});
 		} else if (!slot.attachment && layer.wasVisible)
 			slot.attachment = layer.placeholderName;
+		set(slot.layers, layer.attachmentName, layer);
 		if (layer.blendMode == "linearDodge")
 			slot.blend = "additive";
 		else if (layer.blendMode == "multiply")
@@ -258,12 +262,32 @@ function run () {
 		error(message + "\n\nRename or use the [ignore] tag for these layers.");
 	}
 
-	// Error if a skin placeholder has the same name as a default skin attachment.
 	var slotDuplicates = {};
 	for (var slotName in slots) {
 		if (!slots.hasOwnProperty(slotName)) continue;
 		var slot = slots[slotName];
 
+		// Error if a source mesh isn't found in the same slot.
+		var layers = slot.layers;
+		for (var attachmentName in layers) {
+			if (!layers.hasOwnProperty(attachmentName)) continue;
+			var layer = layers[attachmentName];
+			if (!layer.mesh) continue;
+			if (layer.mesh === true) continue;
+			var source = get(layers, layer.mesh);
+			if (!source) {
+				error("Source mesh \"" + layer.mesh + "\" not found in slot \"" + stripName(slotName) + "\":\n\n"
+					+ layer.path() + "\n\nPrepend the skin name, if any. For example:\nskinName/" + layer.mesh);
+				continue;
+			}
+			if (!source.mesh) {
+				error("Layer \"" + source.path() + "\" is not a mesh:\n" + layer.path());
+				continue;
+			}
+			layer.mesh = source;
+		}
+
+		// Error if a skin placeholder has the same name as a default skin attachment.
 		var defaultPlaceholders = get(slot.placeholders, "default");
 		if (!defaultPlaceholders) continue;
 		for (var skinName in slot.placeholders) {
@@ -356,7 +380,7 @@ function run () {
 				incrProgress(layer.name);
 				if (cancel) return;
 
-				var attachmentName = layer.attachmentName, attachmentPath = layer.attachmentPath, placeholderName = layer.placeholderName;
+				var attachmentName = layer.attachmentName, attachmentPath = layer.attachmentPath, placeholderName = layer.placeholderName, mesh = layer.mesh;
 				var scale = layer.scale, overlays = layer.overlays;
 
 				var trim = layer.findTagValue("trim");
@@ -379,8 +403,9 @@ function run () {
 					overlay.show();
 				}
 
-				layer.updateBounds();
-				if (!layer.width || !layer.height) {
+				var bounds = mesh && mesh != true ? mesh : layer;
+				bounds.updateBounds();
+				if (!bounds.width || !bounds.height) {
 					layer.hide();
 					continue;
 				}
@@ -390,11 +415,11 @@ function run () {
 
 				var x, y, width, height, docHeightCropped;
 				if (trim) {
-					x = layer.left;
-					y = layer.top;
-					width = layer.width;
-					height = layer.height;
-					activeDocument.crop([x - xOffSet, y - yOffSet, layer.right - xOffSet, layer.bottom - yOffSet], 0, width, height);
+					x = bounds.left;
+					y = bounds.top;
+					width = bounds.width;
+					height = bounds.height;
+					activeDocument.crop([x - xOffSet, y - yOffSet, bounds.right - xOffSet, bounds.bottom - yOffSet], 0, width, height);
 					x *= settings.scale;
 					y *= settings.scale;
 					docHeightCropped = height;
@@ -421,10 +446,11 @@ function run () {
 
 				if (layerCount < totalLayerCount) layer.hide();
 
-				x += Math.round(width) / 2 - settings.padding;
-				y = docHeightCropped - (y + Math.round(height) / 2 - settings.padding);
-				width *= scale;
-				height *= scale;
+				var center = mesh ? 0 : 0.5;
+				x += Math.round(width) * center - settings.padding;
+				y = docHeightCropped - (y + Math.round(height) * center - settings.padding);
+				width = Math.round(width * scale);
+				height = Math.round(height * scale);
 
 				// Make relative to the Photoshop document ruler origin.
 				x -= xOffSet * settings.scale;
@@ -435,12 +461,27 @@ function run () {
 					y -= bone.y;
 				}
 
-				jsonSlot += "\t" + tabs + quote(placeholderName) + ': { ';
-				if (attachmentName != placeholderName) jsonSlot += '"name": ' + quote(attachmentName) + ', ';
-				if (attachmentName != attachmentPath) jsonSlot += '"path": ' + quote(attachmentPath) + ', ';
-				jsonSlot += '"x": ' + x + ', "y": ' + y + ', "width": ' + Math.round(width) + ', "height": ' + Math.round(height);
-				if (scale != 1) jsonSlot += ', "scaleX": ' + (1 / scale) + ', "scaleY": ' + (1 / scale);
-				jsonSlot += ' },\n';
+				var json = "\t" + tabs + quote(placeholderName) + ': { ';
+				if (attachmentName != placeholderName) json += '"name": ' + quote(attachmentName) + ', ';
+				if (attachmentName != attachmentPath) json += '"path": ' + quote(attachmentPath) + ', ';
+				if (mesh) {
+					if (mesh === true)
+						json += '"type": "mesh", ';
+					else {
+						json += '"type": "linkedmesh", "parent": "' + mesh.placeholderName + '", ';
+						if (mesh.skinName) json += '"skin": "' + mesh.skinName + '", ';
+					}
+					json += '"width": ' + width + ', "height": ' + height + ', "vertices": [ ';
+					json += x + ', ' + (y - height) + ', ';
+					json += (x + width) + ', ' + (y - height) + ', ';
+					json += (x + width) + ', ' + y + ', ';
+					json += x + ', ' + y + ' ], "uvs": [ 1, 1, 0, 1, 0, 0, 1, 0 ], "triangles": [ 1, 2, 3, 1, 3, 0 ], "hull": 4, "edges": [ 0, 2, 2, 4, 4, 6, 0, 6 ]';
+				} else {
+					json += '"x": ' + x + ', "y": ' + y + ', "width": ' + width + ', "height": ' + height;
+					if (scale != 1) json += ', "scaleX": ' + (1 / scale) + ', "scaleY": ' + (1 / scale);
+				}
+				json += ' },\n';
+				jsonSlot += json;
 			}
 			if (jsonSlot) jsonSkin += tabs + quote(slotName) + ': {\n' + jsonSlot.substring(0, jsonSlot.length - 2) + '\n' + tabs + '\},\n';
 		}
@@ -834,6 +875,7 @@ function showHelpDialog () {
 		+ "•  [folder] or [folder:name]  Layer images are output in a subfolder. Folder groups can be nested.\n"
 		+ "•  [overlay]  This layer is used as a clipping mask for all layers below.\n"
 		+ "•  [trim] or [trim:false]  Force this layer to be whitespace trimmed or not.\n"
+		+ "•  [mesh] or [mesh:name]  Layer is a mesh or, when a name is specified, a linked mesh.\n"
 		+ "•  [ignore]  Layers, groups, and any child groups will not be output.\n"
 		+ "\n"
 		+ "Group names:\n"
@@ -1060,6 +1102,7 @@ function isValidLayerTag (tag) {
 	case "ignore":
 	case "overlay":
 	case "trim":
+	case "mesh":
 		return true;
 	}
 	if (startsWith(tag, "bone:")) return true;
@@ -1069,6 +1112,7 @@ function isValidLayerTag (tag) {
 	if (startsWith(tag, "path:")) return true;
 	if (startsWith(tag, "scale:")) return true;
 	if (startsWith(tag, "trim:")) return true;
+	if (startsWith(tag, "mesh:")) return true;
 	return false;
 }
 
@@ -1358,7 +1402,10 @@ function Layer (id, parent, selected) {
 	this.locked = this.get("layerLocking", "ObjectValue").getBoolean(sID("protectAll"));
 	this.blendMode = tID(this.get("mode", "EnumerationValue"));
 	this.clipping = this.get("group", "Boolean");
-	this.mask = this.get("hasUserMask", "Boolean");
+
+	this.mask = this.get("hasUserMask", "Boolean", function () {
+		return false; // CS2.
+	});
 
 	this.adjustment = this.get("layerKind", "Integer", function () {
 		return 0;
@@ -1556,16 +1603,17 @@ Layer.prototype.findTagLayer = function (tag) {
 	return null;
 };
 
-Layer.prototype.findTagValue = function (tag) {
+Layer.prototype.findTagValue = function (tag, noValue) {
 	var layer = this.findTagLayer(tag);
 	if (!layer) return null;
-	return layer.getTagValue(tag);
+	return layer.getTagValue(tag, noValue);
 };
 
-Layer.prototype.getTagValue = function (tag) {
+Layer.prototype.getTagValue = function (tag, noValue) {
 	if (endsWith(tag, ":")) tag = tag.slice(0, -1);
 	var matches = new RegExp("\\[" + tag + ":([^\\]]+)\\]", "i").exec(this.name);
 	if (matches && matches.length) return trim(matches[1]);
+	if (noValue) return noValue;
 	return stripTags(this.name);
 }
 
@@ -1653,7 +1701,7 @@ function startsWith (str, prefix) {
 }
 
 function endsWith (str, suffix) {
-	return str.indexOf(suffix, str.length - suffix.length) !== -1;
+	return !(str.indexOf(suffix, str.length - suffix.length) === -1);
 }
 
 function quote (value) {

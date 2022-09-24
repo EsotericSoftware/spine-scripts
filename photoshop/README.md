@@ -64,6 +64,7 @@ Tags in square brackets can be used in layer and group names to customize the ou
 * `[folder]` or `[folder:name]`  Layer images are output in a subfolder. Folder groups can be nested.
 * `[overlay]`  This layer is used as a clipping mask for all layers below.
 * `[trim]` or `[trim:false]`  Force this layer to be whitespace trimmed or not.
+* `[mesh]` or `[mesh:name]`  Layer is a mesh or, when a name is specified, a linked mesh.
 * `[ignore]` Layers, groups, and any child groups will not be output.
 
 **Group names:**
@@ -83,7 +84,9 @@ If a skin name contains forward slashes (`/`) then the skin will appear within f
 
 When a layer has a mask, the mask bounds are used instead of the layer's whitespace trimmed bounds. This allows control over the size of the image even when using `Trim whitespace`.
 
-A layer mask can be useful when a mesh image needs whitespace at its edges for placing vertices in Spine. It can also be used to keep a linked mesh image the same size as the source mesh.
+A layer mask can be useful when a mesh image needs whitespace at its edges for placing vertices in Spine.
+
+When `[mesh:name]` is used, the linked mesh will use the size of the source mesh, so a layer mask is not necessary for that.
 
 ## Adjustment layers
 
