@@ -88,6 +88,8 @@ A layer mask can be useful when a mesh image needs whitespace at its edges for p
 
 When `[mesh:name]` is used, the linked mesh will use the size of the source mesh, so a layer mask is not necessary for that.
 
+Layer masks are not supported when using Photoshop CS2.
+
 ## Adjustment layers
 
 Adjustment layers can be used in Photoshop and are automatically applied to the generated images, without having to apply or merge them to each layer below them.
