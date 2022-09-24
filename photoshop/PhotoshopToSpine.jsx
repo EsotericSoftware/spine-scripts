@@ -1,11 +1,12 @@
 ﻿#target photoshop
 app.bringToFront();
 
+// https://github.com/EsotericSoftware/spine-scripts/tree/master/photoshop
 // This script exports Adobe Photoshop layers as individual PNGs. It also
 // writes a JSON file which can be imported into Spine where the images
 // will be displayed in the same positions and draw order.
 
-// Copyright (c) 2012-2020, Esoteric Software
+// Copyright (c) 2012-2022, Esoteric Software
 // All rights reserved.
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
 //     * Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
@@ -13,7 +14,10 @@ app.bringToFront();
 //     * Neither the name of Esoteric Software nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-var scriptVersion = 7.26; // This is incremented every time the script is modified, so you know if you have the latest.
+var scriptVersion = 7.27; // This is incremented every time the script is modified, so you know if you have the latest.
+
+var revealAll = false; // Set to true to enlarge the canvas so layers are not cropped.
+var legacyJson = false; // Set to true to output the old Spine JSON format.
 
 var cs2 = parseInt(app.version) < 10, cID = charIDToTypeID, sID = stringIDToTypeID, tID = typeIDToStringID;
 
@@ -67,8 +71,7 @@ function run () {
 	originalDoc.duplicate();
 	deselectLayers();
 
-	// Uncomment this line to enlarge the canvas so layers are not cropped.
-	//activeDocument.revealAll();
+	if (revealAll) activeDocument.revealAll();
 
 	try {
 		convertToRGB();
@@ -330,7 +333,7 @@ function run () {
 	showProgress("Processing layers...", totalLayerCount);
 
 	// Output skins.
-	var jsonSkins = "", layerCount = 0, writeImages = settings.imagesDir;
+	var jsonSkins = "", layerCount = 0, writeImages = settings.imagesDir, tabs = legacyJson ? '\t\t' : '\t\t\t';
 	for (var skinName in skins) {
 		if (!skins.hasOwnProperty(skinName)) continue;
 		var skinSlots = skins[skinName];
@@ -432,16 +435,21 @@ function run () {
 					y -= bone.y;
 				}
 
-				jsonSlot += "\t\t\t" + quote(placeholderName) + ': { ';
+				jsonSlot += "\t" + tabs + quote(placeholderName) + ': { ';
 				if (attachmentName != placeholderName) jsonSlot += '"name": ' + quote(attachmentName) + ', ';
 				if (attachmentName != attachmentPath) jsonSlot += '"path": ' + quote(attachmentPath) + ', ';
 				jsonSlot += '"x": ' + x + ', "y": ' + y + ', "width": ' + Math.round(width) + ', "height": ' + Math.round(height);
 				if (scale != 1) jsonSlot += ', "scaleX": ' + (1 / scale) + ', "scaleY": ' + (1 / scale);
 				jsonSlot += ' },\n';
 			}
-			if (jsonSlot) jsonSkin += '\t\t' + quote(slotName) + ': {\n' + jsonSlot.substring(0, jsonSlot.length - 2) + '\n\t\t\},\n';
+			if (jsonSlot) jsonSkin += tabs + quote(slotName) + ': {\n' + jsonSlot.substring(0, jsonSlot.length - 2) + '\n' + tabs + '\},\n';
 		}
-		if (jsonSkin) jsonSkins += '\t"' + skinName + '": {\n' + jsonSkin.substring(0, jsonSkin.length - 2) + '\n\t},\n';
+		if (jsonSkin) {
+			if (legacyJson)
+				jsonSkins += '\t"' + skinName + '": {\n' + jsonSkin.substring(0, jsonSkin.length - 2) + '\n\t},\n';
+			else
+				jsonSkins += '\t{\n\t\t"name": ' + quote(skinName) + ',\n\t\t"attachments": {\n' + jsonSkin.substring(0, jsonSkin.length - 2) + '\n\t\t}\n\t},\n';
+		}
 	}
 	lastLayerName = null;
 
@@ -491,7 +499,14 @@ function run () {
 		json += slotIndex < slotsCount ? ',\n' : '\n';
 	}
 	json += '],\n';
-	if (jsonSkins) json += '"skins": {\n' + jsonSkins.substring(0, jsonSkins.length - 2) + '\n},\n';
+
+	if (jsonSkins) {
+		if (legacyJson)
+			json += '"skins": {\n' + jsonSkins.substring(0, jsonSkins.length - 2) + '\n},\n';
+		else
+			json += '"skins": [\n' + jsonSkins.substring(0, jsonSkins.length - 2) + '\n],\n';
+	}
+
 	json += '"animations": { "animation": {} }\n}';
 
 	// Output JSON file.

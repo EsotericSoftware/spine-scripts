@@ -98,17 +98,17 @@ The script will recognize the following blending modes applied to a folder or la
 * `Screen` corresponds to the `Screen` blending mode in Spine.
 * `Linear Dodge` corresponds to the `Additive` blending mode in Spine.
 
-## Reveal all
+## Other settings
 
-By default all layers are cropped by the canvas size. If you would like to have some layers partially or completely outside the canvas but exported without being cropped, you can edit the script to do so. Find this line of code:
-```
-//activeDocument.revealAll();
-```
-Change it to:
-```
-activeDocument.revealAll();
-```
-Note you will need to repeat this edit if you get a new version of the script.
+The script has a few additional settings near the top. If you change the code for these settings, you will need to repeat those edits if you get a new version of the script.
+
+### Reveal all
+
+By default all layers are cropped by the canvas size. If you would like to have some layers partially or completely outside the canvas but exported without being cropped, you can set `revealAll` to `true`.
+
+### Legacy JSON
+
+To output Spine JSON in the old format, set `legacyJson` to `true`. The Spine editor accepts either format but if you are using other tools to process the JSON data they may accept only one of the formats.
 
 ## Debugging
 
