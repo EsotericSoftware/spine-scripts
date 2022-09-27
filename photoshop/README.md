@@ -113,7 +113,7 @@ By default all layers are cropped by the canvas size. If you would like to have 
 
 ### Legacy JSON
 
-To output Spine JSON in the old format, set `legacyJson` to `true`. The Spine editor accepts either format but if you are using other tools to process the JSON data they may accept only one of the formats.
+By default, the script outputs Spine JSON in an older format that all Spine editor versions can read. To output Spine JSON in the newer format, set `legacyJson` to `false`. The latest Spine editor accepts either format but if you are using other tools to process the JSON data they may accept only one of the formats.
 
 ## Debugging
 
