@@ -497,7 +497,9 @@ function run () {
 	activeDocument.close(SaveOptions.DONOTSAVECHANGES);
 
 	// Output skeleton.
-	var json = '{ "skeleton": { "images": "' + imagesDir + '" },\n"bones": [\n';
+	var json = '{ "skeleton": { "images": "' + imagesDir + '" },\n';
+	json += '"PhotoshopToSpine": { "scale": ' + settings.scale + ', "padding": ' + settings.padding + ', "trim": ' + settings.trimWhitespace + ' },\n';
+	json += '"bones": [\n';
 
 	// Output bones.
 	function outputBone (bone) {
