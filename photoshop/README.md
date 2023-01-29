@@ -64,6 +64,7 @@ Tags in square brackets can be used in layer and group names to customize the ou
 * `[folder]` or `[folder:name]`  Layer images are output in a subfolder. Folder groups can be nested.
 * `[overlay]`  This layer is used as a clipping mask for all layers below.
 * `[trim]` or `[trim:false]`  Force this layer to be whitespace trimmed or not.
+* `[mesh]` or `[mesh:name]`  Layer is a mesh or, when a name is specified, a linked mesh.
 * `[ignore]` Layers, groups, and any child groups will not be output.
 
 **Group names:**
@@ -79,6 +80,20 @@ If a layer name, folder name, or path name starts with `/` then parent layers wo
 
 If a skin name contains forward slashes (`/`) then the skin will appear within folders in Spine. For example, `a/b/skin` will show in Spine as folders `a` and `b` with a skin named `skin`.
 
+## Layer masks
+
+When a layer has a mask, the mask bounds are used instead of the layer's whitespace trimmed bounds. This allows control over the size of the image even when using `Trim whitespace`.
+
+A layer mask can be useful when a mesh image needs whitespace at its edges for placing vertices in Spine.
+
+When `[mesh:name]` is used, the linked mesh will use the size of the source mesh, so a layer mask is not necessary for that.
+
+Layer masks are not supported when using Photoshop CS2.
+
+## Adjustment layers
+
+Adjustment layers can be used in Photoshop and are automatically applied to the generated images, without having to apply or merge them to each layer below them.
+
 ## Blending modes
 
 The script will recognize the following blending modes applied to a folder or layer. The slot in Spine will have the corresponding blending mode.
@@ -88,21 +103,17 @@ The script will recognize the following blending modes applied to a folder or la
 * `Screen` corresponds to the `Screen` blending mode in Spine.
 * `Linear Dodge` corresponds to the `Additive` blending mode in Spine.
 
-## Adjustment layers
+## Other settings
 
-Adjustment layers can be used in Photoshop and are automatically applied to the generated images, without having to apply or merge them to each layer below them.
+The script has a few additional settings near the top. If you change the code for these settings, you will need to repeat those edits if you get a new version of the script.
 
-## Reveal all
+### Reveal all
 
-By default all layers are cropped by the canvas size. If you would like to have some layers partially or completely outside the canvas but exported without being cropped, you can edit the script to do so. Find this line of code:
-```
-//activeDocument.revealAll();
-```
-Change it to:
-```
-activeDocument.revealAll();
-```
-Note you will need to repeat this edit if you get a new version of the script.
+By default all layers are cropped by the canvas size. If you would like to have some layers partially or completely outside the canvas but exported without being cropped, you can set `revealAll` to `true`.
+
+### Legacy JSON
+
+By default, the script outputs Spine JSON in an older format that all Spine editor versions can read. To output Spine JSON in the newer format, set `legacyJson` to `false`. The latest Spine editor accepts either format but if you are using other tools to process the JSON data they may accept only one of the formats.
 
 ## Debugging
 

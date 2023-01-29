@@ -1,11 +1,12 @@
 ﻿#target photoshop
 app.bringToFront();
 
+// https://github.com/EsotericSoftware/spine-scripts/tree/master/photoshop
 // This script exports Adobe Photoshop layers as individual PNGs. It also
 // writes a JSON file which can be imported into Spine where the images
 // will be displayed in the same positions and draw order.
 
-// Copyright (c) 2012-2020, Esoteric Software
+// Copyright (c) 2012-2022, Esoteric Software
 // All rights reserved.
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
 //     * Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
@@ -13,11 +14,14 @@ app.bringToFront();
 //     * Neither the name of Esoteric Software nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-var scriptVersion = 7.22; // This is incremented every time the script is modified, so you know if you have the latest.
+var scriptVersion = "7.31"; // This is incremented every time the script is modified, so you know if you have the latest.
 
-var cs2 = parseInt(app.version) < 10, cID = charIDToTypeID, sID = stringIDToTypeID;
+var revealAll = false; // Set to true to enlarge the canvas so layers are not cropped.
+var legacyJson = true; // Set to false to output the newer Spine JSON format.
 
-var originalDoc, settings, progress, cancel, errors;
+var cs2 = parseInt(app.version) < 10, cID = charIDToTypeID, sID = stringIDToTypeID, tID = typeIDToStringID;
+
+var originalDoc, settings, progress, cancel, errors, lastLayerName;
 try {
 	originalDoc = activeDocument;
 } catch (ignored) {}
@@ -28,6 +32,7 @@ var defaultSettings = {
 	writeTemplate: false,
 	writeJson: true,
 	trimWhitespace: true,
+	selectionOnly: false,
 	scale: 1,
 	padding: 1,
 	imagesDir: "./images/",
@@ -37,6 +42,15 @@ loadSettings();
 
 function run () {
 	showProgress();
+
+	var selectedLayers;
+	if (settings.selectionOnly) {
+		selectedLayers = getSelectedLayers();
+		if (!selectedLayers.length) {
+			alert("At least one layer must be selected when \"Selection only\" is checked.");
+			return;
+		}
+	}
 
 	errors = [];
 
@@ -57,8 +71,7 @@ function run () {
 	originalDoc.duplicate();
 	deselectLayers();
 
-	// Uncomment this line to enlarge the canvas so layers are not cropped.
-	//activeDocument.revealAll();
+	if (revealAll) activeDocument.revealAll();
 
 	try {
 		convertToRGB();
@@ -98,7 +111,7 @@ function run () {
 		index: getLayerCount() - 1,
 		total: 0
 	};
-	initializeLayers(context, null, rootLayers);
+	initializeLayers(context, selectedLayers, null, rootLayers);
 	showProgress("Collecting layers...", context.total);
 	collectLayers(rootLayers, layers, []);
 
@@ -191,6 +204,8 @@ function run () {
 		} else
 			layer.placeholderName = layer.attachmentName.substring(skinName.length + 1);
 
+		layer.mesh = layer.findTagValue("mesh", true);
+
 		layer.slotName = layer.findTagValue("slot") || name;
 		var slot = get(slots, layer.slotName);
 		if (!slot) {
@@ -199,10 +214,12 @@ function run () {
 				bone: bone,
 				attachment: layer.wasVisible ? layer.placeholderName : null,
 				placeholders: {},
-				attachments: false
+				attachments: false,
+				layers: {}
 			});
 		} else if (!slot.attachment && layer.wasVisible)
 			slot.attachment = layer.placeholderName;
+		set(slot.layers, layer.attachmentName, layer);
 		if (layer.blendMode == "linearDodge")
 			slot.blend = "additive";
 		else if (layer.blendMode == "multiply")
@@ -245,12 +262,32 @@ function run () {
 		error(message + "\n\nRename or use the [ignore] tag for these layers.");
 	}
 
-	// Error if a skin placeholder has the same name as a default skin attachment.
 	var slotDuplicates = {};
 	for (var slotName in slots) {
 		if (!slots.hasOwnProperty(slotName)) continue;
 		var slot = slots[slotName];
 
+		// Error if a source mesh isn't found in the same slot.
+		var layers = slot.layers;
+		for (var attachmentName in layers) {
+			if (!layers.hasOwnProperty(attachmentName)) continue;
+			var layer = layers[attachmentName];
+			if (!layer.mesh) continue;
+			if (layer.mesh === true) continue;
+			var source = get(layers, layer.mesh);
+			if (!source) {
+				error("Source mesh \"" + layer.mesh + "\" not found in slot \"" + stripName(slotName) + "\":\n\n"
+					+ layer.path() + "\n\nPrepend the skin name, if any. For example:\nskinName/" + layer.mesh);
+				continue;
+			}
+			if (!source.mesh) {
+				error("Layer \"" + source.path() + "\" is not a mesh:\n" + layer.path());
+				continue;
+			}
+			layer.mesh = source;
+		}
+
+		// Error if a skin placeholder has the same name as a default skin attachment.
 		var defaultPlaceholders = get(slot.placeholders, "default");
 		if (!defaultPlaceholders) continue;
 		for (var skinName in slot.placeholders) {
@@ -320,7 +357,7 @@ function run () {
 	showProgress("Processing layers...", totalLayerCount);
 
 	// Output skins.
-	var jsonSkins = "", layerCount = 0, writeImages = settings.imagesDir;
+	var jsonSkins = "", layerCount = 0, writeImages = settings.imagesDir, tabs = legacyJson ? '\t\t' : '\t\t\t';
 	for (var skinName in skins) {
 		if (!skins.hasOwnProperty(skinName)) continue;
 		var skinSlots = skins[skinName];
@@ -343,7 +380,7 @@ function run () {
 				incrProgress(layer.name);
 				if (cancel) return;
 
-				var attachmentName = layer.attachmentName, attachmentPath = layer.attachmentPath, placeholderName = layer.placeholderName;
+				var attachmentName = layer.attachmentName, attachmentPath = layer.attachmentPath, placeholderName = layer.placeholderName, mesh = layer.mesh;
 				var scale = layer.scale, overlays = layer.overlays;
 
 				var trim = layer.findTagValue("trim");
@@ -355,7 +392,7 @@ function run () {
 				if (layer.isGroup) {
 					layer.select();
 					merge();
-					layer = new Layer(layer.id, layer.parent);
+					layer = new Layer(layer.id, layer.parent, layer.selected);
 				}
 				layer.rasterizeStyles();
 
@@ -366,8 +403,9 @@ function run () {
 					overlay.show();
 				}
 
-				layer.updateBounds();
-				if (!layer.width || !layer.height) {
+				var bounds = mesh && mesh != true ? mesh : layer;
+				bounds.updateBounds();
+				if (!bounds.width || !bounds.height) {
 					layer.hide();
 					continue;
 				}
@@ -377,20 +415,19 @@ function run () {
 
 				var x, y, width, height, docHeightCropped;
 				if (trim) {
-					x = layer.left;
-					y = layer.top;
-					width = layer.width;
-					height = layer.height;
-					activeDocument.crop([x - xOffSet, y - yOffSet, layer.right - xOffSet, layer.bottom - yOffSet], 0, width, height);
+					x = bounds.left;
+					y = bounds.top;
+					width = bounds.width;
+					height = bounds.height;
+					activeDocument.crop([x - xOffSet, y - yOffSet, bounds.right - xOffSet, bounds.bottom - yOffSet], 0, width, height);
 					x *= settings.scale;
 					y *= settings.scale;
 					docHeightCropped = height;
 				} else {
 					x = 0;
 					y = 0;
-					width = docWidth - xOffSet * settings.scale;
-					height = docHeight - yOffSet * settings.scale;
-					docHeightCropped = docHeight;
+					width = docWidth;
+					height = docHeightCropped = docHeight;
 				}
 				width = width * settings.scale + settings.padding * 2;
 				height = height * settings.scale + settings.padding * 2;
@@ -408,10 +445,11 @@ function run () {
 
 				if (layerCount < totalLayerCount) layer.hide();
 
-				x += Math.round(width) / 2 - settings.padding;
-				y = docHeightCropped - (y + Math.round(height) / 2 - settings.padding);
-				width *= scale;
-				height *= scale;
+				var center = mesh ? 0 : 0.5;
+				x += Math.round(width) * center - settings.padding;
+				y = docHeightCropped - (y + Math.round(height) * center - settings.padding);
+				width = Math.round(width * scale);
+				height = Math.round(height * scale);
 
 				// Make relative to the Photoshop document ruler origin.
 				x -= xOffSet * settings.scale;
@@ -422,22 +460,45 @@ function run () {
 					y -= bone.y;
 				}
 
-				jsonSlot += "\t\t\t" + quote(placeholderName) + ': { ';
-				if (attachmentName != placeholderName) jsonSlot += '"name": ' + quote(attachmentName) + ', ';
-				if (attachmentName != attachmentPath) jsonSlot += '"path": ' + quote(attachmentPath) + ', ';
-				jsonSlot += '"x": ' + x + ', "y": ' + y + ', "width": ' + Math.round(width) + ', "height": ' + Math.round(height);
-				if (scale != 1) jsonSlot += ', "scaleX": ' + (1 / scale) + ', "scaleY": ' + (1 / scale);
-				jsonSlot += ' },\n';
+				var json = "\t" + tabs + quote(placeholderName) + ': { ';
+				if (attachmentName != placeholderName) json += '"name": ' + quote(attachmentName) + ', ';
+				if (attachmentName != attachmentPath) json += '"path": ' + quote(attachmentPath) + ', ';
+				if (mesh) {
+					if (mesh === true)
+						json += '"type": "mesh", ';
+					else {
+						json += '"type": "linkedmesh", "parent": "' + mesh.placeholderName + '", ';
+						if (mesh.skinName) json += '"skin": "' + mesh.skinName + '", ';
+					}
+					json += '"width": ' + width + ', "height": ' + height + ', "vertices": [ ';
+					json += (x + width) + ', ' + (y - height) + ', ';
+					json += x + ', ' + (y - height) + ', ';
+					json += x + ', ' + y + ', ';
+					json += (x + width) + ', ' + y + ' ], "uvs": [ 1, 1, 0, 1, 0, 0, 1, 0 ], "triangles": [ 1, 2, 3, 1, 3, 0 ], "hull": 4, "edges": [ 0, 2, 2, 4, 4, 6, 0, 6 ]';
+				} else {
+					json += '"x": ' + x + ', "y": ' + y + ', "width": ' + width + ', "height": ' + height;
+					if (scale != 1) json += ', "scaleX": ' + (1 / scale) + ', "scaleY": ' + (1 / scale);
+				}
+				json += ' },\n';
+				jsonSlot += json;
 			}
-			if (jsonSlot) jsonSkin += '\t\t' + quote(slotName) + ': {\n' + jsonSlot.substring(0, jsonSlot.length - 2) + '\n\t\t\},\n';
+			if (jsonSlot) jsonSkin += tabs + quote(slotName) + ': {\n' + jsonSlot.substring(0, jsonSlot.length - 2) + '\n' + tabs + '\},\n';
 		}
-		if (jsonSkin) jsonSkins += '\t"' + skinName + '": {\n' + jsonSkin.substring(0, jsonSkin.length - 2) + '\n\t},\n';
+		if (jsonSkin) {
+			if (legacyJson)
+				jsonSkins += '\t"' + skinName + '": {\n' + jsonSkin.substring(0, jsonSkin.length - 2) + '\n\t},\n';
+			else
+				jsonSkins += '\t{\n\t\t"name": ' + quote(skinName) + ',\n\t\t"attachments": {\n' + jsonSkin.substring(0, jsonSkin.length - 2) + '\n\t\t}\n\t},\n';
+		}
 	}
+	lastLayerName = null;
 
 	activeDocument.close(SaveOptions.DONOTSAVECHANGES);
 
 	// Output skeleton.
-	var json = '{ "skeleton": { "images": "' + imagesDir + '" },\n"bones": [\n';
+	var json = '{ "skeleton": { "images": "' + imagesDir + '" },\n';
+	json += '"PhotoshopToSpine": { "scale": ' + settings.scale + ', "padding": ' + settings.padding + ', "trim": ' + settings.trimWhitespace + ' },\n';
+	json += '"bones": [\n';
 
 	// Output bones.
 	function outputBone (bone) {
@@ -480,7 +541,14 @@ function run () {
 		json += slotIndex < slotsCount ? ',\n' : '\n';
 	}
 	json += '],\n';
-	if (jsonSkins) json += '"skins": {\n' + jsonSkins.substring(0, jsonSkins.length - 2) + '\n},\n';
+
+	if (jsonSkins) {
+		if (legacyJson)
+			json += '"skins": {\n' + jsonSkins.substring(0, jsonSkins.length - 2) + '\n},\n';
+		else
+			json += '"skins": [\n' + jsonSkins.substring(0, jsonSkins.length - 2) + '\n],\n';
+	}
+
 	json += '"animations": { "animation": {} }\n}';
 
 	// Output JSON file.
@@ -549,6 +617,8 @@ function showSettingsDialog () {
 				writeJsonCheckbox.value = settings.writeJson;
 				var writeTemplateCheckbox = group.add("checkbox", undefined, " Write template image");
 				writeTemplateCheckbox.value = settings.writeTemplate;
+				var selectionOnlyCheckbox = group.add("checkbox", undefined, " Selection only");
+				selectionOnlyCheckbox.value = settings.selectionOnly;
 		var scaleText, paddingText, scaleSlider, paddingSlider;
 		if (!cs2) {
 			var slidersGroup = settingsGroup.add("group");
@@ -592,6 +662,7 @@ function showSettingsDialog () {
 		trimWhitespaceCheckbox.preferredSize.width = 150;
 		writeJsonCheckbox.preferredSize.width = 150;
 		writeTemplateCheckbox.preferredSize.width = 150;
+		selectionOnlyCheckbox.preferredSize.width = 150;
 	}
 
 	var outputPathGroup = dialog.add("panel", undefined, "Output Paths");
@@ -637,6 +708,7 @@ function showSettingsDialog () {
 	writeTemplateCheckbox.helpTip = "When checked, a PNG is written for the currently visible layers.";
 	writeJsonCheckbox.helpTip = "When checked, a Spine JSON file is written.";
 	trimWhitespaceCheckbox.helpTip = "When checked, blank pixels around the edges of each image are removed.";
+	selectionOnlyCheckbox.helpTip = "When checked, only the selected items are processed.";
 	scaleSlider.helpTip = "Scales the PNG files. Useful when using higher resolution art in Photoshop than in Spine.";
 	paddingSlider.helpTip = "Blank pixels around the edge of each image. Can avoid aliasing artifacts for opaque pixels along the image edge.";
 	imagesDirText.helpTip = "The folder to write PNGs. Begin with \"./\" to be relative to the PSD file. Blank to disable writing PNGs.";
@@ -680,6 +752,7 @@ function showSettingsDialog () {
 		settings.writeTemplate = writeTemplateCheckbox.value;
 		settings.writeJson = writeJsonCheckbox.value;
 		settings.trimWhitespace = trimWhitespaceCheckbox.value;
+		settings.selectionOnly = selectionOnlyCheckbox.value;
 
 		var scaleValue = parseFloat(scaleText.text);
 		if (scaleValue > 0 && scaleValue <= 100) settings.scale = scaleValue / 100;
@@ -709,6 +782,7 @@ function showSettingsDialog () {
 		writeTemplateCheckbox.enabled = false;
 		writeJsonCheckbox.enabled = false;
 		trimWhitespaceCheckbox.enabled = false;
+		selectionOnlyCheckbox.enabled = false;
 		scaleText.enabled = false;
 		scaleSlider.enabled = false;
 		paddingText.enabled = false;
@@ -727,8 +801,9 @@ function showSettingsDialog () {
 			//alert((new Date().getTime() - start) / 1000 + "s");
 		} catch (e) {
 			if (e.message == "User cancelled the operation") return;
-			alert("An unexpected error has occurred:\n\n[line " + e.line + "] " + e.message + "\n\nTo debug, run the PhotoshopToSpine script using Adobe ExtendScript "
-				+ "with \"Debug > Do not break on guarded exceptions\" unchecked.");
+			var layerMessage = lastLayerName ? "[layer " + lastLayerName + "] " : "";
+			alert("An unexpected error has occurred:\n\n" + layerMessage + "[line: " + e.line + "] " + e.message
+				+ "\n\nTo debug, run the PhotoshopToSpine script using Adobe ExtendScript with \"Debug > Do not break on guarded exceptions\" unchecked.");
 			debugger;
 		} finally {
 			if (activeDocument != originalDoc) activeDocument.close(SaveOptions.DONOTSAVECHANGES);
@@ -801,6 +876,7 @@ function showHelpDialog () {
 		+ "•  [folder] or [folder:name]  Layer images are output in a subfolder. Folder groups can be nested.\n"
 		+ "•  [overlay]  This layer is used as a clipping mask for all layers below.\n"
 		+ "•  [trim] or [trim:false]  Force this layer to be whitespace trimmed or not.\n"
+		+ "•  [mesh] or [mesh:name]  Layer is a mesh or, when a name is specified, a linked mesh.\n"
 		+ "•  [ignore]  Layers, groups, and any child groups will not be output.\n"
 		+ "\n"
 		+ "Group names:\n"
@@ -868,29 +944,42 @@ function showProgress (title, total) {
 	var reset = $.hiresTimer;
 }
 
-function incrProgress (text) {
+function incrProgress (layerName) {
+	lastLayerName = trim(layerName);
 	progress.count++;
 	if (progress.count != 1 && progress.count < progress.total) {
 		progress.updateTime += $.hiresTimer;
 		if (progress.updateTime < 500000) return;
 		progress.updateTime = 0;
 	}
-	text = progress.count + " / "+ progress.total + ": " + trim(text);
 	progress.bar.value = progress.count;
-	progress.message.text = text;
+	progress.message.text = progress.count + " / "+ progress.total + ": " + lastLayerName;
 	if (!progress.dialog.active) progress.dialog.active = true;
 }
 
 // PhotoshopToSpine utility:
 
-function initializeLayers (context, parent, parentLayers) {
+function initializeLayers (context, selectedLayers, parent, parentLayers) {
 	while (context.index >= context.first) {
 		if (cancel) return -1;
-		var layer = new Layer(getLayerID(context.index--), parent);
+
+		var id = getLayerID(context.index--);
+
+		var selected = parent && parent.selected;
+		if (selectedLayers && !selected) {
+			for (var i = 0, n = selectedLayers.length; i < n; i++) {
+				if (selectedLayers[i] === id) {
+					selected = true;
+					break;
+				}
+			}
+		}
+
+		var layer = new Layer(id, parent, selected);
 		if (layer.isGroupEnd) break;
 		context.total++;
 		parentLayers.push(layer);
-		if (layer.isGroup) initializeLayers(context, layer, layer.layers);
+		if (layer.isGroup) initializeLayers(context, selectedLayers, layer, layer.layers);
 	}
 }
 
@@ -900,6 +989,16 @@ function collectLayers (parentLayers, collect, overlays) {
 		if (cancel) return;
 		var layer = parentLayers[i];
 		incrProgress(layer.name);
+
+		if (settings.selectionOnly && !layer.selected) {
+			var merge = layer.isGroup && (layer.findTagLayer("merge") || layer.findTagLayer("overlay"));
+			if (!merge && layer.layers && layer.layers.length > 0)
+				collectLayers(layer.layers, collect, overlays);
+			else
+				layer.hide();
+			continue;
+		}
+
 		if (settings.ignoreHiddenLayers && !layer.visible) continue;
 		if (settings.ignoreBackground && layer.background) {
 			layer.hide();
@@ -950,7 +1049,7 @@ function collectLayers (parentLayers, collect, overlays) {
 			if (layer.isGroup) {
 				layer.select();
 				merge();
-				layer = new Layer(layer.id, layer.parent);
+				layer = new Layer(layer.id, layer.parent, layer.selected);
 			}
 			layer.setLocked(false);
 			layer.hide();
@@ -1004,6 +1103,7 @@ function isValidLayerTag (tag) {
 	case "ignore":
 	case "overlay":
 	case "trim":
+	case "mesh":
 		return true;
 	}
 	if (startsWith(tag, "bone:")) return true;
@@ -1013,6 +1113,7 @@ function isValidLayerTag (tag) {
 	if (startsWith(tag, "path:")) return true;
 	if (startsWith(tag, "scale:")) return true;
 	if (startsWith(tag, "trim:")) return true;
+	if (startsWith(tag, "mesh:")) return true;
 	return false;
 }
 
@@ -1093,6 +1194,22 @@ function newLayerBelow (name) {
 // Layer must be selected.
 function merge () {
 	executeAction(cID("Mrg2"), undefined, DialogModes.NO);
+}
+
+// Layer must be selected.
+function channelBounds (name) {
+	try {
+		var ref1 = new ActionReference();
+		ref1.putProperty(sID("channel"), sID("selection"));
+		var ref2 = new ActionReference();
+		ref2.putEnumerated(sID("channel"), sID("channel"), sID(name));
+		var desc = new ActionDescriptor();
+		desc.putReference(sID("null"), ref1);
+		desc.putReference(sID("to"), ref2);
+		executeAction(sID("set"), desc, DialogModes.NO);
+		return activeDocument.selection.bounds;
+	} catch (ignored) {}
+	return null;
 }
 
 function scaleImage (scale) {
@@ -1212,6 +1329,19 @@ function hasBackgroundLayer () {
    }
 }
 
+function getSelectedLayers () {
+	var layers = [];
+	var ref = new ActionReference();
+	ref.putEnumerated(cID("Dcmn"), cID("Ordn"), cID("Trgt"));
+	var desc = executeActionGet(ref);
+	if (desc.hasKey(sID("targetLayers"))) {
+		desc = desc.getList(sID("targetLayers"));
+		for (var i = 0, n = desc.count; i < n; i++)
+			layers.push(getLayerID(desc.getReference(i).getIndex() + 1));
+	}
+	return layers;
+}
+
 function typeToMethod (type) {
 	if (type == "DescValueType.ENUMERATEDTYPE") return "EnumerationValue";
 	if (type == "DescValueType.OBJECTTYPE") return "ObjectValue";
@@ -1235,7 +1365,7 @@ function properties (object, indent) {
 		var key = object.getKey(i);
 		var type = typeToMethod(object.getType(key));
 		var value = object["get" + type](key);
-		if (type == "EnumerationValue") value = typeIDToStringID(value);
+		if (type == "EnumerationValue") value = tID(value);
 		else if (type == "ObjectValue") value = "{\n" + properties(value, indent + 1) + "}";
 		else if (type == "List") {
 			var items = "";
@@ -1248,20 +1378,21 @@ function properties (object, indent) {
 		}
 		for (var ii = 0; ii < indent; ii++)
 			text += "  ";
-		text += typeIDToStringID(key) + ": " + value + " (" + type + ")\n";
+		text += tID(key) + ": " + value + " (" + type + ")\n";
 	}
 	return text;
 }
 
 // Layer class.
 
-function Layer (id, parent) {
+function Layer (id, parent, selected) {
 	this.id = id;
 	this.parent = parent;
+	this.selected = selected;
 
 	this.name = this.get("name", "String");
 
-	var type = typeIDToStringID(this.get("layerSection", "EnumerationValue"));
+	var type = tID(this.get("layerSection", "EnumerationValue"));
 	this.isGroupEnd = type == "layerSectionEnd";
 	if (this.isGroupEnd) return;
 	this.isGroup = type == "layerSectionStart";
@@ -1270,8 +1401,12 @@ function Layer (id, parent) {
 	this.visible = this.get("visible", "Boolean");
 	this.background = this.get("background", "Boolean");
 	this.locked = this.get("layerLocking", "ObjectValue").getBoolean(sID("protectAll"));
-	this.blendMode = typeIDToStringID(this.get("mode", "EnumerationValue"));
+	this.blendMode = tID(this.get("mode", "EnumerationValue"));
 	this.clipping = this.get("group", "Boolean");
+
+	this.mask = this.get("hasUserMask", "Boolean", function () {
+		return false; // CS2.
+	});
 
 	this.adjustment = this.get("layerKind", "Integer", function () {
 		return 0;
@@ -1397,6 +1532,9 @@ Layer.prototype.rasterize = function () {
 Layer.prototype.rasterizeStyles = function () {
 	if (!this.has("layerEffects")) return;
 	this.select();
+	try {
+		merge(); // Merges any clipping masks.
+	} catch (ignored) {}
 	newLayerBelow(this.name);
 	this.select(true);
 	merge();
@@ -1417,11 +1555,29 @@ Layer.prototype.rasterizeStyles = function () {
 Layer.prototype.updateBounds = function () {
 	if (!this.boundsDirty) return;
 	this.boundsDirty = false;
-	var bounds = this.get("boundsNoEffects", "ObjectValue"); // Not tightly fitting if there are layer styles.
-	this.top = bounds.getDouble(sID("top"));
-	this.left = bounds.getDouble(sID("left"));
-	this.bottom = bounds.getDouble(sID("bottom"));
-	this.right = bounds.getDouble(sID("right"));
+
+	var bounds;
+	if (this.mask) {
+		this.select();
+		bounds = channelBounds("mask");
+		if (bounds) {
+			this.left = bounds[0].as("px");
+			this.top = bounds[1].as("px");
+			this.right = bounds[2].as("px");
+			this.bottom = bounds[3].as("px");
+		}
+	}
+	if (!bounds) {
+		try {
+			bounds = this.get("boundsNoEffects", "ObjectValue");
+		} catch (e) { // CS2.
+			bounds = this.get("bounds", "ObjectValue"); // Not tightly fitting if there are layer styles.
+		}
+		this.left = bounds.getDouble(sID("left"));
+		this.top = bounds.getDouble(sID("top"));
+		this.right = bounds.getDouble(sID("right"));
+		this.bottom = bounds.getDouble(sID("bottom"));
+	}
 	this.width = this.right - this.left;
 	this.height = this.bottom - this.top;
 }
@@ -1448,16 +1604,17 @@ Layer.prototype.findTagLayer = function (tag) {
 	return null;
 };
 
-Layer.prototype.findTagValue = function (tag) {
+Layer.prototype.findTagValue = function (tag, noValue) {
 	var layer = this.findTagLayer(tag);
 	if (!layer) return null;
-	return layer.getTagValue(tag);
+	return layer.getTagValue(tag, noValue);
 };
 
-Layer.prototype.getTagValue = function (tag) {
+Layer.prototype.getTagValue = function (tag, noValue) {
 	if (endsWith(tag, ":")) tag = tag.slice(0, -1);
 	var matches = new RegExp("\\[" + tag + ":([^\\]]+)\\]", "i").exec(this.name);
 	if (matches && matches.length) return trim(matches[1]);
+	if (noValue) return noValue;
 	return stripTags(this.name);
 }
 
@@ -1545,7 +1702,7 @@ function startsWith (str, prefix) {
 }
 
 function endsWith (str, suffix) {
-	return str.indexOf(suffix, str.length - suffix.length) !== -1;
+	return !(str.indexOf(suffix, str.length - suffix.length) === -1);
 }
 
 function quote (value) {
