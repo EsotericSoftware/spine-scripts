@@ -69,6 +69,7 @@ Tags in square brackets can be used in layer and group names to customize the ou
 
 **Group names:**
 * `[merge]` Layers in the group are merged and a single image is output.
+* `[name:pattern]` Adds a prefix or suffix to layer names in the group. The pattern must contain an asterisk (*).
 
 **Layer names:**
 * The layer name is used for the attachment or skin placeholder name, relative to any parent `[skin]` or `[folder]` groups. Can contain `/` for subfolders.

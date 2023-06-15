@@ -14,7 +14,7 @@ app.bringToFront();
 //     * Neither the name of Esoteric Software nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-var scriptVersion = "7.32"; // This is incremented every time the script is modified, so you know if you have the latest.
+var scriptVersion = "7.33"; // This is incremented every time the script is modified, so you know if you have the latest.
 
 var revealAll = false; // Set to true to enlarge the canvas so layers are not cropped.
 var legacyJson = true; // Set to false to output the newer Spine JSON format.
@@ -133,6 +133,17 @@ function run () {
 			error("Layer name is not a valid attachment name:\n\n" + layer.name);
 			continue;
 		}
+
+		var namePattern = layer.findTagValue("name:");
+		if (namePattern) {
+			var asterisk = namePattern.indexOf("*");
+			if (asterisk == -1) {
+				error("The pattern for the [name:pattern] tag must contain an asterisk (*):\n\n" + layer.name);
+				continue;
+			}
+			name = namePattern.substring(0, asterisk) + name + namePattern.substring(asterisk + 1);
+		}
+
 		var folderPath = layer.folders("");
 		if (startsWith(name, "/")) {
 			name = name.substring(1);
@@ -151,7 +162,7 @@ function run () {
 		var scale = layer.findTagValue("scale:");
 		if (!scale) scale = 1;
 		layer.scale = parseFloat(scale);
-		if (isNaN(layer.scale)) error("Invalid scale " + scale + ": " + layer.path());
+		if (isNaN(layer.scale)) error("Invalid scale " + scale + ":\n\n" + layer.path());
 
 		var bone = null, boneLayer = layer.findTagLayer("bone");
 		if (boneLayer) {
@@ -189,7 +200,7 @@ function run () {
 			else if (skinLayer.parent)
 				skinName = skinLayer.parent.folders("") + skinName;
 			if (skinName && skinName.toLowerCase() == "default") {
-				error("The skin name \"default\" is reserved: " + layer.path() + "\nPlease use a different name.");
+				error("The skin name \"default\" is reserved:\n\n" + layer.path() + "\n\nPlease use a different name.");
 				continue;
 			}
 		}
@@ -281,7 +292,7 @@ function run () {
 				continue;
 			}
 			if (!source.mesh) {
-				error("Layer \"" + source.path() + "\" is not a mesh:\n" + layer.path());
+				error("Layer \"" + source.path() + "\" is not a mesh:\n\n" + layer.path());
 				continue;
 			}
 			layer.mesh = source;
@@ -881,6 +892,7 @@ function showHelpDialog () {
 		+ "\n"
 		+ "Group names:\n"
 		+ "•  [merge]  Layers in the group are merged and a single image is output.\n"
+		+ "•  [name:pattern]  Adds a prefix or suffix to layer names in the group. The pattern must contain an asterisk (*).\n"
 		+ "\n"
 		+ "Layer names:\n"
 		+ "•  The layer name is used for the attachment or skin placeholder name, relative to any parent [skin] or [folder] groups. Can contain / for subfolders.\n"
@@ -1091,7 +1103,8 @@ function collectGroupMerge (parent) {
 }
 
 function isValidGroupTag (tag) {
-	return isValidLayerTag(tag) || tag == "merge";
+	if (startsWith(tag, "name:")) return true;
+	return tag == "merge" || isValidLayerTag(tag);
 }
 
 function isValidLayerTag (tag) {
