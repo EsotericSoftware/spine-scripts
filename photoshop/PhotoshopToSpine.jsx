@@ -14,7 +14,7 @@ app.bringToFront();
 //     * Neither the name of Esoteric Software nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-var scriptVersion = "7.33"; // This is incremented every time the script is modified, so you know if you have the latest.
+var scriptVersion = "7.34"; // This is incremented every time the script is modified, so you know if you have the latest.
 
 var revealAll = false; // Set to true to enlarge the canvas so layers are not cropped.
 var legacyJson = true; // Set to false to output the newer Spine JSON format.
@@ -128,20 +128,12 @@ function run () {
 
 		var name = stripTags(layer.name).replace(/.png$/, "");
 		name = name.replace(/[\\:"*?<>|]/g, "").replace(/^\.+$/, "").replace(/^__drag$/, ""); // Illegal.
+		name = layer.applyNamePatterns(name);
+		if (!name) continue;
 		name = name.replace(/^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$/i, ""); // Windows.
 		if (!name || name.length > 255) {
 			error("Layer name is not a valid attachment name:\n\n" + layer.name);
 			continue;
-		}
-
-		var namePattern = layer.findTagValue("name:");
-		if (namePattern) {
-			var asterisk = namePattern.indexOf("*");
-			if (asterisk == -1) {
-				error("The pattern for the [name:pattern] tag must contain an asterisk (*):\n\n" + layer.name);
-				continue;
-			}
-			name = namePattern.substring(0, asterisk) + name + namePattern.substring(asterisk + 1);
 		}
 
 		var folderPath = layer.folders("");
@@ -1523,7 +1515,7 @@ Layer.prototype.moveAbove = function (otherLayer) {
 	desc.putReference(cID("T   "), ref2);
 	desc.putBoolean(cID("Adjs"), false);
 	executeAction(cID("move"), desc, DialogModes.NO);
-}
+};
 
 Layer.prototype.deleteLayer = function () {
 	this.unlock();
@@ -1593,7 +1585,7 @@ Layer.prototype.updateBounds = function () {
 	}
 	this.width = this.right - this.left;
 	this.height = this.bottom - this.top;
-}
+};
 
 Layer.prototype.select = function (add) {
 	var ref = new ActionReference();
@@ -1603,7 +1595,22 @@ Layer.prototype.select = function (add) {
 	if (add) desc.putEnumerated(sID("selectionModifier"), sID("selectionModifierType"), sID("addToSelection"));
 	desc.putBoolean(cID("MkVs"), false);
 	executeAction(cID("slct"), desc, DialogModes.NO);
-}
+};
+
+Layer.prototype.applyNamePatterns = function (name) {
+	var layer = this.findTagLayer("name:");
+	if (!layer) return name;
+	var namePattern = layer.getTagValue("name:");
+	if (namePattern) {
+		var asterisk = namePattern.indexOf("*");
+		if (asterisk == -1) {
+			error("The pattern for the [name:pattern] tag must contain an asterisk (*):\n\n" + layer.name);
+			return null;
+		}
+		name = namePattern.substring(0, asterisk) + name + namePattern.substring(asterisk + 1);
+	}
+	return layer.parent ? layer.parent.applyNamePatterns(name) : name;
+};
 
 Layer.prototype.findTagLayer = function (tag) {
 	var groupTag = isValidGroupTag(tag), layerTag = isValidLayerTag(tag);
@@ -1629,7 +1636,7 @@ Layer.prototype.getTagValue = function (tag, noValue) {
 	if (matches && matches.length) return trim(matches[1]);
 	if (noValue) return noValue;
 	return stripTags(this.name);
-}
+};
 
 Layer.prototype.getParentBone = function (bones) {
 	var parentName = this.parent ? this.parent.findTagValue("bone") : null;
