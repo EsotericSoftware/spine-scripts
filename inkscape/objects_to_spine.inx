@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<inkscape-extension xmlns="http://www.inkscape.org/namespace/inkscape/extension">
+    <name>Spine Export - Objects</name>
+    <id>com.esotericsoftware.spine.inkscape.export.objects</id>
+
+    <param name="tab" type="notebook">
+        <page name="options-tab" gui-text="Options">
+            <param name="export-mode" type="optiongroup" appearance="combo" gui-text="Export mode">
+               <option value="selected_objects">Selected objects</option>
+               <option value="visible_layers">Visible layers</option>
+            </param>
+            <param name="outdir" type="path" mode="folder" gui-text="Output directory">~/InkscapeExport</param>
+            <param name="image-prefix" type="string" gui-text="Image prefix (Optional)"/>
+            <param name="skeleton-name" type="string" gui-text="Skeleton name (Optional)"/>
+            <param name="json" type="boolean" gui-text="Save a JSON file">true</param>
+            <param name="pretty-print" type="boolean" gui-text="Pretty print JSON">true</param>
+            <param name="center-content" type="boolean" gui-text="Center content">true</param>
+            <param name="compact-names" type="boolean" gui-text="Compact names">true</param>
+        </page>
+        <page name="about_tab" gui-text="About">
+            <label appearance="header">Objects to Spine Exporter v1.0</label>
+            <label>
+                Writes individual SVG objects as PNG images and creates a JSON file to bring the objects into Spine
+                with the same positions and draw order they had in Inkscape.
+            </label>
+            <label>
+                For Spine import details read the article by the link below:
+            </label>
+            <label appearance="url">
+                http://esotericsoftware.com/spine-import
+            </label>
+            <label>
+                For help and extension parameter details, please see the README file by the link below.
+                If you encountered a bug or want to propose a feature, please open an issue on GitHub.
+            </label>
+            <label appearance="url">
+                https://github.com/EsotericSoftware/spine-scripts/tree/master/inkscape
+            </label>
+            <label>or start a discussion on the official Spine forum</label>
+            <label appearance="url">
+                https://en.esotericsoftware.com/forum/
+            </label>
+        </page>
+    </param>
+
+    <!-- Live preview doesn't make sense, so we add this attribute to remove it -->
+    <effect needs-live-preview="false">
+        <object-type>all</object-type>
+        <effects-menu>
+            <submenu name="Spine"/>
+        </effects-menu>
+    </effect>
+
+    <script>
+        <command reldir="extensions" interpreter="python">objects_to_spine.py</command>
+    </script>
+</inkscape-extension>

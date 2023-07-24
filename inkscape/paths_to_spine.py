@@ -26,7 +26,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 '''
 
-import os, inkex, simplestyle, simpletransform, simplepath, cubicsuperpath, json
+import os, inkex, json
 from math import sqrt
 
 data = {
@@ -49,8 +49,8 @@ class path2spine(inkex.Effect):
 		self.own_slot = self.options.own_slot
 		self.selected_only = self.options.selected_only
 		self.corner_type = self.options.corner_type
-		self.hw = self.svg.unittouu(self.svg.width) / 2
-		self.hh = self.svg.unittouu(self.svg.height) / 2
+		self.hw = self.svg.unittouu(self.svg.viewport_width) / 2
+		self.hh = self.svg.unittouu(self.svg.viewport_height) / 2
 
 		if not self.own_slot:
 			data["slots"].append({"name": "paths", "bone": "root"})
@@ -85,8 +85,8 @@ class path2spine(inkex.Effect):
 		style = dict(inkex.Style.parse_str("style"))
 		color = None
 		if "stroke" in style:
-			if simplestyle.isColor(style["stroke"]):
-				color = "%02x%02x%02x" % (simplestyle.parseColor(style["stroke"]))
+			if inkex.colors.is_color(style["stroke"]):
+				color = "%02x%02x%02x" % (inkex.Color.parse_str(style["stroke"]))
 				if style.has_key("stroke-opacity"):
 					alpha = float(style["stroke-opacity"])
 					if alpha < 1:
@@ -220,7 +220,7 @@ class path2spine(inkex.Effect):
 	def composeParents(self, node, m):
 		t = node.get('transform')
 		if t:
-			m = inkex.Transform(inkex.Transform(t).matrix) * inkex.Transform(m)
+			m = inkex.Transform(inkex.Transform(t).matrix) @ inkex.Transform(m)
 		if node.getparent().tag == inkex.addNS('g','svg') or node.getparent().tag == inkex.addNS('a','svg'):
 			m = self.composeParents(node.getparent(), m)
 		return m
@@ -234,10 +234,10 @@ class path2spine(inkex.Effect):
 		m2 = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]
 		for t in transforms:
 			m = inkex.Transform(t).matrix
-			m2 = inkex.Transform(m2) * inkex.Transform(m)
+			m2 = inkex.Transform(m2) @ inkex.Transform(m)
 
 		m = inkex.Transform(node.get("transform")).matrix
-		m2 = inkex.Transform(m2) * inkex.Transform(m)
+		m2 = inkex.Transform(m2) @ inkex.Transform(m)
 
 
 		color = self.get_color(node)
@@ -304,5 +304,6 @@ class path2spine(inkex.Effect):
 
 		self.save(self.filename)
 
-e = path2spine()
-e.run()
+
+if __name__ == "__main__":
+	path2spine().run()
