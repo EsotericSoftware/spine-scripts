@@ -18,7 +18,7 @@
             <param name="compact-names" type="boolean" gui-text="Compact names">true</param>
         </page>
         <page name="about_tab" gui-text="About">
-            <label appearance="header">Objects to Spine Exporter v1.0</label>
+            <label appearance="header">Objects to Spine Exporter v1.1</label>
             <label>
                 Writes individual SVG objects as PNG images and creates a JSON file to bring the objects into Spine
                 with the same positions and draw order they had in Inkscape.
