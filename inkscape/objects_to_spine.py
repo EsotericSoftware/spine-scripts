@@ -8,6 +8,8 @@ and generates a JSON file for Spine import.
 https://esotericsoftware.com/spine-json-format
 
 Changelog:
+v1.1 @metaphore
+    - Fixed: missing empty string check for "Image prefix".
 v1.0 @metaphore
     - The old "InkscapeToSpine" script code was updated to Inkex 1.2.2 and optimized.
     - Dropped support for DPI param. We stick to the "px" units of the document.
@@ -148,7 +150,9 @@ class SpineExporter(inkex.EffectExtension):
         return selected_nodes
 
     def export_nodes(self, nodes: list[BaseElement]):
-        image_prefix = self.options.image_prefix.replace("\\", "/")
+        image_prefix = self.options.image_prefix
+        if image_prefix:
+            image_prefix = image_prefix.replace("\\", "/").strip()
 
         output_dir = os.path.expanduser(self.options.outdir)
         images_dir = os.path.join(output_dir, "images")
@@ -178,7 +182,7 @@ class SpineExporter(inkex.EffectExtension):
                 node_name = node.get_id()
 
             full_name = node_name
-            if image_prefix and not image_prefix.isspace():
+            if image_prefix:
                 full_name = image_prefix + full_name
 
             image_file = os.path.join(images_dir, "%s.png" % full_name)
