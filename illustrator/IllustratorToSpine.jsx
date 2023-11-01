@@ -2,7 +2,7 @@
 //
 // author: Nathan Sweet
 // author: Ivan Gadzhega
-// rev: 10
+// rev: 11
 
 const L2PNG_NAMESPACE = "http://esotericsoftware.com/l2png";
 const L2PNG_PREFIX = "l2png:";
@@ -10,14 +10,12 @@ const L2PNG_PREFIX = "l2png:";
 const IGNORE_HIDDEN_LAYERS_ID = "ignoreHiddenLayers";
 const WRITETE_MPLATE_ID = "writeTemplate";
 const WRITETE_JSON_ID = "writeJson";
-const CLEAR_IMAGES_DIR_ID = "clearImagesDir";
 const PNG_SCALE_ID = "pngScale";
 const IMAGES_DIR_ID = "imagesDir";
 
 // Setting defaults
 var exportOptions = new ExportOptionsPNG24();
 var ignoreHiddenLayers = true;
-var clearImagesDir = false;
 var writeTemplate = false;
 var writeJson = false;
 var pngScale = 100;
@@ -127,8 +125,6 @@ function showDialog() {
 
 	var ignoreHiddenLayersCheckbox = group.add("checkbox", undefined, " Ignore hidden layers");
 	ignoreHiddenLayersCheckbox.value = ignoreHiddenLayers;
-	var clearImagesDirCheckbox = group.add("checkbox", undefined, " Clear output directory");
-	clearImagesDirCheckbox.value = clearImagesDir;
 
 	group = checkboxGroup.add("group");
 	group.orientation = "column";
@@ -165,10 +161,6 @@ function showDialog() {
 		var imagesFolder = new Folder(absImagesDirPath);
 		imagesFolder.create();
 
-		if (clearImagesDir) {
-			clearFolder(imagesFolder);
-		}
-
 		convertToPNG(absImagesDirPath);
 
 		if (writeTemplate) {
@@ -191,7 +183,6 @@ function showDialog() {
 		ignoreHiddenLayers = ignoreHiddenLayersCheckbox.value;
 		writeTemplate = writeTemplateCheckbox.value;
 		writeJson = writeJsonCheckbox.value;
-		clearImagesDir = clearImagesDirCheckbox.value;
 		pngScale = scaleText.text;
 		imagesDir = imagesDirText.text;
 	}
@@ -411,7 +402,6 @@ function saveSettings() {
 		xmp.setProperty(L2PNG_NAMESPACE, IGNORE_HIDDEN_LAYERS_ID, ignoreHiddenLayers);
 		xmp.setProperty(L2PNG_NAMESPACE, WRITETE_MPLATE_ID, writeTemplate);
 		xmp.setProperty(L2PNG_NAMESPACE, WRITETE_JSON_ID, writeJson);
-		xmp.setProperty(L2PNG_NAMESPACE, CLEAR_IMAGES_DIR_ID, clearImagesDir);
 		xmp.setProperty(L2PNG_NAMESPACE, PNG_SCALE_ID, pngScale);
 		xmp.setProperty(L2PNG_NAMESPACE, IMAGES_DIR_ID, imagesDir);
 		activeDoc.XMPString = xmp.serialize();
@@ -435,11 +425,6 @@ function loadSettings() {
 		proprety = xmp.getProperty(L2PNG_NAMESPACE, WRITETE_JSON_ID, XMPConst.BOOLEAN);
 		if (proprety) {
 			writeJson = proprety.value;
-		}
-
-		proprety = xmp.getProperty(L2PNG_NAMESPACE, CLEAR_IMAGES_DIR_ID, XMPConst.BOOLEAN);
-		if (proprety) {
-			clearImagesDir = proprety.value;
 		}
 
 		proprety = xmp.getProperty(L2PNG_NAMESPACE, PNG_SCALE_ID, XMPConst.NUMBER);
@@ -488,19 +473,6 @@ function ignoreLayer(layer) {
 		return true;
 
 	return false;
-}
-
-function clearFolder(folder) {
-	if (folder.exists) {
-		var subfiles = folder.getFiles();
-		for (var i = 0; i < subfiles.length; i++) {
-			var file = subfiles[i];
-			if (file instanceof Folder) {
-				clearFolder(file);
-			}
-			file.remove();
-		}
-	}
 }
 
 function absolutePath(path) {
