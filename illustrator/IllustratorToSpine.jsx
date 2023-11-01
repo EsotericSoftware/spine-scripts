@@ -2,7 +2,7 @@
 //
 // author: Nathan Sweet
 // author: Ivan Gadzhega
-// rev: 11
+// rev: 12
 
 const L2PNG_NAMESPACE = "http://esotericsoftware.com/l2png";
 const L2PNG_PREFIX = "l2png:";
@@ -412,29 +412,29 @@ function loadSettings() {
 	if (loadXMPLibrary()) {
 		xmp = new XMPMeta(activeDoc.XMPString);
 
-		var proprety = xmp.getProperty(L2PNG_NAMESPACE, IGNORE_HIDDEN_LAYERS_ID, XMPConst.BOOLEAN);
-		if (proprety) {
-			ignoreHiddenLayers = proprety.value;
+		var property = xmp.getProperty(L2PNG_NAMESPACE, IGNORE_HIDDEN_LAYERS_ID, XMPConst.BOOLEAN);
+		if (property) {
+			ignoreHiddenLayers = property.value;
 		}
 
-		proprety = xmp.getProperty(L2PNG_NAMESPACE, WRITETE_MPLATE_ID, XMPConst.BOOLEAN);
-		if (proprety) {
-			writeTemplate = proprety.value;
+		property = xmp.getProperty(L2PNG_NAMESPACE, WRITETE_MPLATE_ID, XMPConst.BOOLEAN);
+		if (property) {
+			writeTemplate = property.value;
 		}
 
-		proprety = xmp.getProperty(L2PNG_NAMESPACE, WRITETE_JSON_ID, XMPConst.BOOLEAN);
-		if (proprety) {
-			writeJson = proprety.value;
+		property = xmp.getProperty(L2PNG_NAMESPACE, WRITETE_JSON_ID, XMPConst.BOOLEAN);
+		if (property) {
+			writeJson = property.value;
 		}
 
-		proprety = xmp.getProperty(L2PNG_NAMESPACE, PNG_SCALE_ID, XMPConst.NUMBER);
-		if (proprety) {
-			pngScale = proprety.value;
+		property = xmp.getProperty(L2PNG_NAMESPACE, PNG_SCALE_ID, XMPConst.NUMBER);
+		if (property) {
+			pngScale = property.value;
 		}
 
-		proprety = xmp.getProperty(L2PNG_NAMESPACE, IMAGES_DIR_ID, XMPConst.STRING);
-		if (proprety) {
-			imagesDir = proprety.value;
+		property = xmp.getProperty(L2PNG_NAMESPACE, IMAGES_DIR_ID, XMPConst.STRING);
+		if (property) {
+			imagesDir = property.value;
 		}
 	}
 }
