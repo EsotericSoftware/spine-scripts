@@ -1249,7 +1249,7 @@ function absolutePath (path) {
 	path = forwardSlashes(trim(path));
 	if (!startsWith(path, ".") && !startsWith(path, "~")) {
 		var absolute = decodeURI(new File(path).fsName);
-		if (!startsWith(absolute, decodeURI(new File("child").parent.fsName))) return forwardSlashes(absolute) + "/";
+		if (!startsWith(absolute, decodeURI(new File("child").parent.fsName)) || isWinAbsolutePath(path)) return forwardSlashes(absolute) + "/";
 		path = "./" + path;
 	}
 	if (path.length == 0)
@@ -1723,6 +1723,10 @@ function startsWith (str, prefix) {
 
 function endsWith (str, suffix) {
 	return !(str.indexOf(suffix, str.length - suffix.length) === -1);
+}
+
+function isWinAbsolutePath(path){
+	return /^[A-Za-z]:/.test(path);
 }
 
 function quote (value) {
