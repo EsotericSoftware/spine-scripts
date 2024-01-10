@@ -10,11 +10,6 @@ Using a shell script to export many projects at once has many advantages:
 
 The batch script `spine-export.bat` is for Windows and the Bash shell script `spine-export.sh` is for macOS and Linux.
 
-## Download
-To download the script, left-click on the link below according to your operating system:  
-[**spine-export.bat (for Windows)**](https://esotericsoftware.com/spine-scripts/export/spine-export.bat)  
-[**spine-export.sh (for macOS/Linux)**](https://esotericsoftware.com/spine-scripts/export/spine-export.sh)  
-
 ## Tutorial video
 [![Batch export using scripts_00473](https://github.com/misaki-eymard/custom-spine-scripts/assets/85478846/c9b483e4-9155-435a-b762-ae81a8333860)]('https://youtu.be/_orkfUSl9lk')
 
