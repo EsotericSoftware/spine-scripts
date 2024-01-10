@@ -10,16 +10,15 @@ Using a shell script to export many projects at once has many advantages:
 
 The batch script `spine-export.bat` is for Windows and the Bash shell script `spine-export.sh` is for macOS and Linux.
 
----
+## Download
+To download the script, left-click on the link below according to your operating system:  
+[**spine-export.bat (for Windows)**](https://esotericsoftware.com/spine-scripts/export/spine-export.bat)  
+[**spine-export.sh (for macOS/Linux)**](https://esotericsoftware.com/spine-scripts/export/spine-export.sh)  
 
-## Script usage
-You can watch a video demonstrating how to use the script here:  
-**YouTube**: https://youtu.be/_orkfUSl9lk
+## Tutorial video
 [![Batch export using scripts_00473](https://github.com/misaki-eymard/custom-spine-scripts/assets/85478846/c9b483e4-9155-435a-b762-ae81a8333860)]('https://youtu.be/_orkfUSl9lk')
 
----
-
-## How to use
+## Usage
 ### Make customizations
 If you open the script with a text editor, you'll find a "Customization Section" at the top (the following image is from `spine-export.bat` but `spine-export.sh` is very similar):  
 
@@ -37,9 +36,7 @@ There are five customizations is available, and the first three settings should 
 
 6. **Whether to clean up the animation or not:** Even if set to false, cleanup will be performed if “cleanUp” is true in the export settings JSON file.
 
----
-
-### Running spine-export.bat
+## Running spine-export.bat
 On Windows there are a few ways to run the script:
 
 - Drag and drop a folder on the `spine-export.bat` file.
@@ -52,9 +49,7 @@ spine-export.bat path\to\spine\project\folder
 
 The script searches the specified folder and all subfolders. If it finds a `.spine` file it performs an export.
 
----
-
-### Running spine-export.sh
+## Running spine-export.sh
 **1.Make the script executable**  
 Open Terminal, navigate to the directory where it is located, and then grant it permission with this command:
 ```
@@ -71,12 +66,10 @@ If you do not specify a path when executing the script, the script will prompt f
 
 The script searches the specified directory and all subdirectories. If it finds a `.spine` file it performs an export.
 
----
-
-### Default export settings
+## Default export settings
 To specify more detailed default export settings, you need to prepare an export settings JSON file.
 
-#### Save an export settings file
+### Save an export settings file
 On the export window in the Spine editor, there is a Save button in the lower left corner that allows you to save the current export settings as a JSON file.  
 
 ![image1](https://github.com/misaki-eymard/custom-spine-scripts/assets/85478846/df7e97a3-a580-4f02-8aa5-693bd667f081)
@@ -91,7 +84,7 @@ If `Pack` was checked in the export settings then the texture packer settings ar
 ![image2](https://github.com/misaki-eymard/custom-spine-scripts/assets/85478846/37f21286-1efe-49cd-8a18-35708c2ff51f)
 
 
-#### Set the default export settings
+### Set the default export settings
 Open the script file with any text editor and change the value of `DEFAULT_FORMAT` to the path of your .export.json file. For example:
 ```
 DEFAULT_FORMAT=/path/to/spineboy.export.json
@@ -100,9 +93,7 @@ These settings will be used if no `.export.json` file is found next to a project
 
 Note that the exported files will be output using `DEFAULT_OUTPUT_DIR` in the Customization Section, not the output path in the `.export.json` file.
 
----
-
-### Export settings per project
+## Export settings per project
 To export a Spine project with different settings, prepare an `.export.json` file with the settings and saved it the same folder as the Spine project. For example, the filesystem hierarchy could look like this:
 ```
 <Folder where you specify the path when running the script>
@@ -122,7 +113,7 @@ To export a Spine project with different settings, prepare an `.export.json` fil
 
 The .export.json file name does not need to match the project file name.
 
-#### Multiple exports for the same project
+### Multiple exports for the same project
 To export a single skeleton multiple times with different export settings, prepare and include that many .export.json files. For example, to export the skeleton data both in binary format and as a PNG sequence, your filesystem hierarchy could look like this:
 ```
 <Folder where you specify the path when running the script>
@@ -143,7 +134,7 @@ To export a single skeleton multiple times with different export settings, prepa
             └── images
 ```
 
-#### Mixing default and custom settings
+### Mixing default and custom settings
 A project file without an .export.json file in the same folder will be exported with default settings:
 ```
 <Folder where you specify the path when running the script>
@@ -162,22 +153,18 @@ A project file without an .export.json file in the same folder will be exported 
             └── images
 ```
 
----
-
-# Script Details
+## Script Details
 
 You are welcome to modify the script to meet your needs. We have written comments in the script to describe everything it does and more details can also be found below. (The following explanation is based on `spine-export.sh` because it is more readable.)
 
-## Find .spine projects
+### Find .spine projects
 In this script, the following code generates a temporary file and stores the path in “tmp_file”:
 ```
-# Save .spine files to a temporary file.
 tmp_file=$(mktemp)
 ```
 
 The subsequent code recursively searches for files with a ".spine" extension and records them in the temporary file created earlier:
 ```
-# Search recursively for files with extension ".spine".
 find "$search_dir" -type f -name "*.spine" > "$tmp_file"
 ```
 
@@ -203,7 +190,6 @@ The initial segment of the while statement outputs a message, updating the scrip
 
 Then, the parent directory of the `.spine` file is stored in `parent_path`:
 ```
-	# Set parent_path to the .spine file's parent directory.
 	parent_path="$(dirname "$file_path")"
 ```
 
@@ -286,11 +272,11 @@ This process checks that the parameter "class" exists in the `.export.json` file
 
 If it is not a valid `.export.json`, skip that export if more than one `.export.json` is found. If only that `.export.json` is found, the export is performed with default settings.
 
-## Exporting a found .spine project
-The script contains two primary functions: `exportUsingJsonSettings()` and `exportUsingDefaultSettings()`.
+### Exporting a found .spine project
+The script incorporates two primary functions: `exportUsingJsonSettings()` and `exportUsingDefaultSettings()`.
 Upon finding a file with a `.spine` extension,  `exportUsingJsonSettings()` is called when a valid `.export.json` file is present in the same directory. Conversely, if the file is not found, `exportUsingDefaultSettings()` is called.
 
-### exportUsingDefaultSettings()
+#### exportUsingDefaultSettings()
 ```
 exportUsingDefaultSettings () {
 	local parent_path="$1"
@@ -318,21 +304,21 @@ This function requires the arguments `parent_path` and `file_path` when called. 
 
 The array `command_args` stores the Spine version, the path to the Spine project for export, the output directory path, and the export settings JSON path. This means that the bolded segments in the following commands are grouped together in `command_args`:
 
-Spine **--update (Version number) -i (Path to the SpineProject file) -o (Path to the output directory) -e (Export settings)**
+Spine **--update (Version number) --input (Path to the SpineProject file) --output (Path to the output directory) --export (Path to export settings JSON path)**
 
 The command "${command_args[@]}" passes these commands to the Spine executable for the execution of the export process.
 
 Upon completion of the export, the script notifies that it has exported in the same directory as the Spine project and then concludes the loop.
 
-### exportUsingJsonSettings()
-*The same parts as in exportUsingDefaultSettings() are omitted in this explanation.
+#### exportUsingJsonSettings()
+*The same parts as in `exportUsingDefaultSettings()` are omitted in this guide.
 
 The following line extracts the value of the "output" parameter from the `.export.json` file and stores it in the `output_path` variable:
 ```
 	output_path=$(sed -n 's/"output".*"\([^"]*\)"/\1/p' "$json_file" | sed -r 's/\\\\/\\/g' | sed -r 's/,$//g' )
 ```
 
-If the output path specified in the `.export.json` file is invalid, Spine will return an error. The following part counts this error, finds an alternative possible output path, and performs the export:
+If the output path specified in the `.export.json` file is invalid, Spine will return an error. The script counts this error, finds an alternative possible output path, and performs the export:
 ```
 	if "$SPINE_EXE" "${command_args[@]}"; then
 		echo "Exported to the following directory: $output_path"
@@ -352,6 +338,7 @@ If the output path specified in the `.export.json` file is invalid, Spine will r
 ```
 
 Upon completion of the export, the script notifies the specified output directory in the .export.json file that the file has been exported, and then exits the loop.
+
 
 ### End of loop
 By default, the script waits for a keystroke, but if you do not need this, comment out the following line:
