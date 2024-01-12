@@ -1,4 +1,4 @@
-# spine-export.sh / spine-export.bat
+# spine-export.bat / spine-export.sh
 These scripts can be used for exporting images, video, or skeleton data in JSON or binary format. The scripts look for an export settings file in the same folder as the project file, so each project can be exported differently.
 
 Using a shell script to export many projects at once has many advantages:
@@ -10,8 +10,10 @@ Using a shell script to export many projects at once has many advantages:
 
 The batch script `spine-export.bat` is for Windows and the Bash shell script `spine-export.sh` is for macOS and Linux.
 
-## Tutorial video
-[![Batch export using scripts_00473](https://github.com/misaki-eymard/custom-spine-scripts/assets/85478846/c9b483e4-9155-435a-b762-ae81a8333860)]('https://youtu.be/_orkfUSl9lk')
+## Download
+To download the script, left click on one of the following links according to your operating system (do not right click and "save as", do not click a different link above):  
+- **For Windows:** [**spine-export.bat**](https://esotericsoftware.com/spine-scripts/spine-export.bat)
+- **For macOS and Linux:** [**spine-export.sh**](https://esotericsoftware.com/spine-scripts/spine-export.sh)  
 
 ## Usage
 ### Make customizations
