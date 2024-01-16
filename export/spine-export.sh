@@ -19,7 +19,7 @@ VERSION="4.1.XX"
 # Alternatively, you can specify the path to an export settings JSON file to use it for the default export settings.
 DEFAULT_EXPORT="binary+pack"
 
-# Specify the default output directory when exporting in the default export.
+# Specify the default output directory when exporting without an export settings JSON file.
 # If the export settings JSON file is found, the output path in it will be used.
 DEFAULT_OUTPUT_DIR="export"
 
@@ -32,6 +32,11 @@ CLEANUP="false"
 ##################
 
 set -e
+
+waitForKeypress () {
+	# Comment out the following line to exit without waiting for a keypress.
+	read -n 1 -s -r -p "Press any key to exit."
+}
 
 if [ ! -f "$SPINE_EXE" ]; then
 	SPINE_EXE="C:/Program Files/Spine/Spine.com"
@@ -47,6 +52,7 @@ fi
 if [ ! -f "$SPINE_EXE" ]; then
 	echo "Error: Spine editor executable was not found."
 	echo "Edit the script and set the 'SPINE_EXE' path."
+	waitForKeypress
 	exit 1
 fi
 
@@ -212,14 +218,17 @@ echo "==========================================================================
 if [ $spine_file_count -eq 0 ]; then
 	echo "Error: No files with the '.spine' extension were found."
 	echo "================================================================================"
+	waitForKeypress
 	exit 1
 else
 	echo "Exporting complete."
 	if [ $export_error_count -ne 0 ]; then
 		echo "$export_error_count error(s) during export."
+		echo "================================================================================"
+		waitForKeypress
+		exit 1
 	fi
 	echo "================================================================================"
 fi
 
-# Comment out the following line to exit without waiting for a keypress.
-read -n 1 -s -r -p "Press any key to exit."
+waitForKeypress

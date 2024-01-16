@@ -19,7 +19,7 @@ SET VERSION=4.1.XX
 :: Alternatively, you can specify the path to an export settings JSON file to use it for the default export settings.
 SET DEFAULT_EXPORT=binary+pack
 
-:: Specify the default output folder(directory) when exporting in the default export.
+:: Specify the default output folder(directory) when exporting without an export settings JSON file.
 :: If the export settings JSON file is found, the output path in it will be used.
 SET DEFAULT_OUTPUT_DIR=export
 
@@ -157,6 +157,9 @@ IF %spine_file_count% EQU 0 (
 	echo Exporting complete.
 	IF !export_error_count! NEQ 0 (
 		echo !export_error_count! error^(s^) during export.
+		echo ================================
+		IF /I %0 EQU "%~dpnx0" PAUSE
+		exit /B 1
 	)
 	echo ================================
 )
