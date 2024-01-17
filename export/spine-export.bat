@@ -19,7 +19,7 @@ SET VERSION=4.1.XX
 :: Alternatively, you can specify the path to an export settings JSON file to use it for the default export settings.
 SET DEFAULT_EXPORT=binary+pack
 
-:: Specify the default output folder(directory) when exporting without an export settings JSON file.
+:: Specify the default output directory when exporting using the default export mode.
 :: If the export settings JSON file is found, the output path in it will be used.
 SET DEFAULT_OUTPUT_DIR=export
 
