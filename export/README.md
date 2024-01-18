@@ -37,8 +37,8 @@ There are five customizations is available, and the first three settings should 
 On Windows there are a few ways to run the script:
 
 - Drag and drop a folder on the `spine-export.bat` file.
-- Double click the `spine-export.bat` file to open a CMD window, then type or paste a path, or drag and drop a folder on to the CMD window.
-- Run the `spine-export.bat` file from a CMD prompt, then type or paste a path, or drag and drop a folder on to the CMD window.
+- Double click the `spine-export.bat` file to open a CMD window, then type or paste a path, or drag and drop a folder onto the CMD window.
+- Run the `spine-export.bat` file from a CMD prompt, then type or paste a path, or drag and drop a folder onto the CMD window.
 - Run the `spine-export.bat` file from a CMD prompt with a path as the first parameter.
 ```
 spine-export.bat path\to\spine\project\folder
