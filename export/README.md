@@ -10,6 +10,10 @@ Using a shell script to export many projects at once has many advantages:
 
 The batch script `spine-export.bat` is for Windows and the Bash shell script `spine-export.sh` is for macOS and Linux.
 
+## Getting started
+Here's a video showing how to use the scripts: https://youtu.be/xROUhFOrp1U?si=4Y_ZoG_Om4SKUVOL
+[![Video:Spine Export Scripts](https://github.com/EsotericSoftware/spine-scripts/assets/85478846/a4b67e7f-79c1-4664-8db9-3b8099e958fe)](https://www.youtube.com/watch?v=xROUhFOrp1U)
+
 ## Download
 To download the script, left click on one of the following links according to your operating system (do not right click and "save as", do not click a different link above):  
 - **For Windows:** [**spine-export.bat**](https://esotericsoftware.com/spine-scripts/spine-export.bat)
@@ -46,6 +50,9 @@ spine-export.bat path\to\spine\project\folder
 
 The script searches the specified folder and all subfolders. If it finds a `.spine` file it performs an export.
 
+**Video: https://youtu.be/g4Mup6Qc5uQ**  
+[![2_Export-with-spine-export bat](https://github.com/EsotericSoftware/spine-scripts/assets/85478846/6745bfa4-c04b-42e1-963b-f943b2fac4a8)](https://youtu.be/g4Mup6Qc5uQ)
+
 ## Running spine-export.sh
 **1.Make the script executable**  
 Open Terminal, navigate to the directory where it is located, and then grant it permission with this command:
@@ -62,6 +69,10 @@ To run the script, specify "./spine-export.sh" and then the path to the director
 If you do not specify a path when executing the script, the script will prompt for a path to be entered.
 
 The script searches the specified directory and all subdirectories. If it finds a `.spine` file it performs an export.
+
+**Video: https://youtu.be/g4Mup6Qc5uQ**  
+[![3_Export-with-spine-export sh](https://github.com/EsotericSoftware/spine-scripts/assets/85478846/ca1760ab-780f-41fc-835d-03d044aa4ab1)](https://youtu.be/g4Mup6Qc5uQ)
+
 
 ## Default export settings
 To specify more detailed default export settings, you need to prepare an export settings JSON file.
