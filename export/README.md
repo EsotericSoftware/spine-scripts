@@ -70,8 +70,8 @@ If you do not specify a path when executing the script, the script will prompt f
 
 The script searches the specified directory and all subdirectories. If it finds a `.spine` file it performs an export.
 
-**Video: https://youtu.be/g4Mup6Qc5uQ**  
-[![3_Export-with-spine-export sh](https://github.com/EsotericSoftware/spine-scripts/assets/85478846/ca1760ab-780f-41fc-835d-03d044aa4ab1)](https://youtu.be/g4Mup6Qc5uQ)
+**Video: https://youtu.be/zoA4SvAdB0U**  
+[![3_Export-with-spine-export sh](https://github.com/EsotericSoftware/spine-scripts/assets/85478846/ca1760ab-780f-41fc-835d-03d044aa4ab1)](https://youtu.be/zoA4SvAdB0U)
 
 
 ## Default export settings
