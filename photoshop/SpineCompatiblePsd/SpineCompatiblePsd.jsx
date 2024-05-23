@@ -13,7 +13,7 @@ app.bringToFront();
 //     * Neither the name of Esoteric Software nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-var scriptVersion = "1.00"; // This is incremented every time the script is modified, so you know if you have the latest.
+var scriptVersion = "1.01"; // This is incremented every time the script is modified, so you know if you have the latest.
 
 var cs2 = parseInt(app.version) < 10, cID = charIDToTypeID, sID = stringIDToTypeID, tID = typeIDToStringID;
 
@@ -136,20 +136,20 @@ function showSettingsDialog () {
 		return;
 	}
 	if (!originalDoc) {
-		alert("Please open a document before running the spine-compatible-psd script.");
+		alert("Please open a document before running the SpineCompatiblePsd script.");
 		return;
 	}
 	try {
 		decodeURI(activeDocument.path);
 	} catch (e) {
-		alert("Please save the document before running the spine-compatible-psd script.");
+		alert("Please save the document before running the SpineCompatiblePsd script.");
 		return;
 	}
 
 	// Layout.
 	var dialog, group;
 	try {
-		dialog = new Window("dialog", "spine-compatible-psd v" + scriptVersion);
+		dialog = new Window("dialog", "SpineCompatiblePsd v" + scriptVersion);
 	} catch (e) {
 		throw new Error("\n\nScript is unable to create a Window. Your Photoshop installation may be broken and may need to be reinstalled.\n\n" + e.message);
 	}
@@ -257,7 +257,7 @@ function expandAllgroups(parent) {
 function loadSettings () {
 	var options;
 	try {
-		options = app.getCustomOptions("spine-compatible-psd");
+		options = app.getCustomOptions("SpineCompatiblePsd");
 	} catch (ignored) {}
 
 	settings = {};
@@ -278,7 +278,7 @@ function saveSettings () {
 		if (!defaultSettings.hasOwnProperty(key)) continue;
 		desc["put" + getOptionType(defaultSettings[key])](sID(key), settings[key]);
 	}
-	app.putCustomOptions("spine-compatible-psd", desc, true);
+	app.putCustomOptions("SpineCompatiblePsd", desc, true);
 }
 
 function getOptionType (value) {
@@ -293,7 +293,7 @@ function getOptionType (value) {
 // Help dialog.
 
 function showHelpDialog () {
-	var dialog = new Window("dialog", "spine-compatible-psd - Help");
+	var dialog = new Window("dialog", "SpineCompatiblePsd - Help");
 	dialog.alignChildren = ["fill", ""];
 	dialog.orientation = "column";
 	dialog.alignment = ["", "top"];
@@ -318,7 +318,7 @@ function showHelpDialog () {
 // Progress dialog:
 
 function showProgress (title, total) {
-	title = title ? "spine-compatible-psd - " + title : "spine-compatible-psd";
+	title = title ? "SpineCompatiblePsd - " + title : "SpineCompatiblePsd";
 	if (!progress) {
 		var dialog = new Window("palette", title);
 		dialog.alignChildren = "fill";
@@ -371,7 +371,7 @@ function incrProgress (layerName) {
 	if (!progress.dialog.active) progress.dialog.active = true;
 }
 
-// spine-compatible-psd utility:
+// SpineCompatiblePsd utility:
 
 function initializeLayers (context, parent, parentLayers, adjustmentAndClippings, layersWithEffects, toHide, adjustmentStack, clippingStack, prevClipping) {
 	while (context.index >= context.first) {
