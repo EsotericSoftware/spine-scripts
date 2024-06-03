@@ -1220,7 +1220,7 @@ function channelBounds (name) {
 function scaleImage (scale) {
 	if (scale == 1) return;
 	var imageSize = activeDocument.width.as("px") * scale;
-	activeDocument.resizeImage(UnitValue(imageSize, "px"), null, null, ResampleMethod.BICUBICSHARPER);
+	activeDocument.resizeImage(UnitValue(imageSize, "px"), null, null, ResampleMethod.BICUBICAUTOMATIC);
 }
 
 var history;
