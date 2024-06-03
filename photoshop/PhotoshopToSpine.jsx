@@ -14,7 +14,7 @@ app.bringToFront();
 //     * Neither the name of Esoteric Software nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-var scriptVersion = "7.39"; // This is incremented every time the script is modified, so you know if you have the latest.
+var scriptVersion = "7.40"; // This is incremented every time the script is modified, so you know if you have the latest.
 
 var revealAll = false; // Set to true to enlarge the canvas so layers are not cropped.
 var legacyJson = true; // Set to false to output the newer Spine JSON format.
@@ -651,7 +651,7 @@ function showSettingsDialog () {
 				group.add("statictext", undefined, "Scale:");
 				scaleText = group.add("edittext", undefined, settings.scale * 100);
 				scaleText.preferredSize.width = 50;
-			scaleSlider = settingsGroup.add("slider", undefined, settings.scale * 100, 1, 100);
+			scaleSlider = settingsGroup.add("slider", undefined, settings.scale * 100, 1, 400);
 			group = settingsGroup.add("group");
 				group.add("statictext", undefined, "Padding:");
 				paddingText = group.add("edittext", undefined, settings.padding);
@@ -758,7 +758,7 @@ function showSettingsDialog () {
 		settings.selectionOnly = selectionOnlyCheckbox.value;
 
 		var scaleValue = parseFloat(scaleText.text);
-		if (scaleValue > 0 && scaleValue <= 100) settings.scale = scaleValue / 100;
+		if (scaleValue > 0 && scaleValue <= 400) settings.scale = scaleValue / 100;
 
 		settings.imagesDir = imagesDirText.text;
 		settings.jsonPath = jsonPathText.text;
@@ -768,8 +768,8 @@ function showSettingsDialog () {
 	}
 
 	runButton.onClick = function () {
-		if (scaleText.text <= 0 || scaleText.text > 100) {
-			alert("Scale must be between > 0 and <= 100.");
+		if (scaleText.text <= 0 || scaleText.text > 400) {
+			alert("Scale must be between > 0 and <= 400.");
 			return;
 		}
 		if (paddingText.text < 0) {
