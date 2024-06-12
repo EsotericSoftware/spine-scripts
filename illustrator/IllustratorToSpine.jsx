@@ -355,7 +355,14 @@ function parseLayer(layer, info) {
 	for (var j = 0; j < pageItems.length; j++ ) {
 		if (!pageItems[j].hidden) {
 			pageItems[j].locked = false;
-			pageItems[j].selected = true;
+			if (subItems != undefined) {
+				for (var subIndex=0; subIndex<subItems.length; subIndex++) {
+					var subItem = subItems[subIndex];
+					if (subItem.locked == false && subItem.hidden == false) subItem.selected = true;
+				}
+			} else {
+				pageItems[j].selected = true;
+			}
 		}
 	}
 
