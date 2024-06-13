@@ -351,40 +351,30 @@ function parseSubLayers(node, info, path) {
 
 function parseLayer(layer, info) {
 	var pageItems = layer.pageItems;
+	var visibleBounds;
 
-	for (var j = 0; j < pageItems.length; j++ ) {
+	var left = Number.POSITIVE_INFINITY;
+	var top = Number.NEGATIVE_INFINITY;
+	var right = Number.NEGATIVE_INFINITY;
+	var bottom = Number.POSITIVE_INFINITY;
+	
+	var found = false;
+	
+	for (var j = 0; j < pageItems.length; j++ ) { 
 		if (!pageItems[j].hidden) {
-			pageItems[j].locked = false;
-			if (subItems != undefined) {
-				for (var subIndex=0; subIndex<subItems.length; subIndex++) {
-					var subItem = subItems[subIndex];
-					if (subItem.locked == false && subItem.hidden == false) subItem.selected = true;
-				}
-			} else {
-				pageItems[j].selected = true;
-			}
+			visibleBounds = getVisibleBounds(pageItems[j]);
+			if (visibleBounds == undefined) continue;
+
+			found = true;
+
+			left = Math.min(visibleBounds[0], left);
+			right = Math.max(visibleBounds[2], right);
+			top = Math.max(visibleBounds[1], top);
+			bottom = Math.min(visibleBounds[3], bottom);
 		}
 	}
-
-	if (activeDoc.selection[0]) {
-		var left, right, top, bottom;
-
-		for (var k = 0; k < activeDoc.selection.length; k++ ) {
-			var subSelection = activeDoc.selection[k];
-
-			if (k == 0) {
-				left = subSelection.left;
-				right = subSelection.left + subSelection.width;
-				top = subSelection.top;
-				bottom = subSelection.top - subSelection.height;
-			} else {
-				left = Math.min(subSelection.left, left);
-				right = Math.max(subSelection.left + subSelection.width, right);
-				top = Math.max(subSelection.top, top);
-				bottom = Math.min(subSelection.top - subSelection.height, bottom);
-			}
-		}
-
+	
+	if (found) {
 		var layerName = getLayerName(layer);
 		info.skinLayers[info.skinLayers.length] = layerName;
 
@@ -396,9 +386,52 @@ function parseLayer(layer, info) {
 
 		info.slots[layerName] = ldata;
 	}
+}
 
-	// deselect all
-	activeDoc.selection = null;
+function getVisibleBounds(object) {
+	var bounds, clippingItem;
+	if (object.typename == "GroupItem") {
+		if (object.clipped) {
+			for (var i = 0; i < object.pageItems.length; i++) {
+				if (object.pageItems[i].hidden) continue;
+
+				if (object.pageItems[i].clipping) {
+					clippingItem = object.pageItems[i];
+					break;
+				} else if (object.pageItems[i].typename == "CompoundPathItem") {
+					if (object.pageItems[i].pathItems[0].clipping) {
+						clippingItem = object.pageItems[i];
+						break;
+					}
+				} 
+			}
+
+			if (clippingItem != undefined) bounds = clippingItem.visibleBounds;
+		}
+
+		if (bounds == undefined){
+			var subObjectBounds;
+
+			var bounds = [Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY, Number.POSITIVE_INFINITY];
+			var found = false;
+			
+			for (var i = 0; i < object.pageItems.length; i++) {
+				if (object.pageItems[i].hidden) continue;
+				found = true;
+
+				subObjectBounds = getVisibleBounds(object.pageItems[i]);
+				bounds[0] = Math.min(bounds[0], subObjectBounds[0]); // Left
+				bounds[1] = Math.max(bounds[1], subObjectBounds[1]); // Up
+				bounds[2] = Math.max(bounds[2], subObjectBounds[2]); // Right
+				bounds[3] = Math.min(bounds[3], subObjectBounds[3]); // Down
+			}
+
+			if (!found) bounds = undefined;
+		}
+	} else
+		bounds = object.visibleBounds;
+
+	return bounds;
 }
 
 // -- Settings --------------------
