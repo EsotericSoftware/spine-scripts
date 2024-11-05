@@ -11,7 +11,7 @@ SPINE_EXE="/Applications/Spine.app/Contents/MacOS/Spine"
 
 # Specify the version of Spine Editor you want to use.
 # End with ".XX" to use the latest patch version. For example: 4.1.XX
-VERSION="4.1.XX"
+VERSION="4.2.XX"
 
 # Specify the default export.
 # If "json" or "binary" is specified: JSON or binary export will be performed with default settings.
