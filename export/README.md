@@ -23,7 +23,7 @@ To download the script, left click on one of the following links according to yo
 ### Make customizations
 If you open the script with a text editor, you'll find a "Customization Section" at the top (the following image is from `spine-export.bat` but `spine-export.sh` is very similar):  
 
-![CustomaizationSection](https://github.com/misaki-eymard/custom-spine-scripts/assets/85478846/007581d6-0e09-4377-96e6-92ac908ad24f)
+![CustomaizationSection](https://github.com/user-attachments/assets/1708a362-a862-4e9f-9a97-0b03cb0393c5)
 
 There are five customizations is available, and the first three settings should be reviewed before running the script:
 
