@@ -1,5 +1,9 @@
 # Photoshop to Spine
 
+This script processes layers in a PSD file and generates 1) a JSON file that can be imported into Spine, and 2) images for each layer for use in Spine.
+
+Spine can now [import PSD files directly](https://esotericsoftware.com/spine-import-psd). Spine's built-in `Import PSD` can be up to 5X faster and is generally preferred over using this script. It also means you can use any image editing software that can save a PSD file, you aren't forced into using Adobe software products.
+
 This script supports the latest version of Photoshop CC and all older versions of Photoshop back to CS2.
 
 An alternative to an expensive Photoshop CC subscription is to use Photoshop Elements, which is a one-time purchase. It is a reduced functionality version of Photoshop intended for photographers, but supports the most often used features (clipping masks, adjusments layers, etc) and may be sufficient for your needs.
