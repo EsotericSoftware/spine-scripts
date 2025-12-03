@@ -303,19 +303,23 @@ class SpineExporter(inkex.EffectExtension):
 
     # @staticmethod
     def get_bounding_box(self, node: BaseElement) -> tuple[float, float, float, float] | None:
-        transform = None
-        parent = node.getparent()
-        if parent is not None:
-            transform = parent.composed_transform()
-        bounding_box = node.bounding_box(transform)
+        node_id = node.get_id()
 
-        if bounding_box is None:
-            return None
+        def q(arg: str) -> float:
+            # Ask Inkscape for the bbox of this id in page coordinates (px)
+            out = inkscape(
+                self.options.input_file,
+                **{
+                    "query-id": node_id,
+                    arg: None,
+                }
+            )
+            return float(str(out).strip())
 
-        x = round(self.svg.uutounit(bounding_box.x.minimum))
-        y = round(self.svg.uutounit(bounding_box.y.minimum))
-        width = round(self.svg.uutounit(bounding_box.width))
-        height = round(self.svg.uutounit(bounding_box.height))
+        x = q("query-x")
+        y = q("query-y")
+        width = q("query-width")
+        height = q("query-height")
         return x, y, width, height
 
     @staticmethod
