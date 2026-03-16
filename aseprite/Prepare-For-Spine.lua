@@ -6,21 +6,24 @@ https://github.com/jordanbleu/aseprite-to-spine
 
 -----------------------------------------------[[ Functions ]]-----------------------------------------------
 --[[
-Returns a flattened view of
-the layers and groups of the sprite.
+Flattens the layers of a sprite while considering their effective visibility.
 parent: The sprite or parent layer group
-arr: The array to append to
+outLayers: The array to append the flattened layers totally ignoring groups
+outVis: The array to append the effective visibility of each layer (true / false)
+inheritedVisible: The visibility inherited from parent groups (true / false)
 ]]
-function getLayers(parent, arr)
-    for i, layer in ipairs(parent.layers) do
-        if (layer.isGroup) then
-            arr[#arr + 1] = layer
-            arr = getLayers(layer, arr)
-        else
-            arr[#arr + 1] = layer
+function flattenWithEffectiveVisibility(parent, outLayers, outVis, inheritedVisible)
+    for _, layer in ipairs(parent.layers) do
+        -- A layer is effectively visible if it is visible and all of its parent groups are also visible
+        local effectiveVisible = inheritedVisible and layer.isVisible
+
+        outLayers[#outLayers + 1] = layer
+        outVis[#outVis + 1] = effectiveVisible
+
+        if layer.isGroup then
+            flattenWithEffectiveVisibility(layer, outLayers, outVis, effectiveVisible)
         end
     end
-    return arr
 end
 
 --[[
@@ -76,6 +79,7 @@ outputDir: the directory the sprite is saved in
 visibilityStates: the prior state of each layer's visibility (true / false)
 ]]
 function captureLayers(layers, sprite, visibilityStates)
+    -- First hide all layers so we can selectively show them when we capture them
     hideAllLayers(layers)
 
     local outputDir = app.fs.filePath(sprite.filename)
@@ -103,6 +107,7 @@ function captureLayers(layers, sprite, visibilityStates)
     for i, layer in ipairs(layers) do
         -- Ignore groups and non-visible layers
         if (not layer.isGroup and visibilityStates[i] == true) then
+            -- Set the layer to visible so we can capture it, then set it back to hidden after
             layer.isVisible = true
             local cel = layer.cels[1]
             local cropped = Sprite(sprite)
@@ -161,7 +166,9 @@ elseif (activeSprite.filename == "") then
     return
 end
 
-local flattenedLayers = getLayers(activeSprite, {})
+local flattenedLayers = {} -- This will be the flattened view of the sprite layers, ignoring groups
+local effectiveVisibilities = {} -- This will be the effective visibility of each layer (true / false)
+flattenWithEffectiveVisibility(activeSprite, flattenedLayers, effectiveVisibilities, true)
 
 if (containsDuplicates(flattenedLayers)) then
     return
@@ -172,7 +179,7 @@ local visibilities = captureVisibilityStates(flattenedLayers)
 
 -- Saves each sprite layer as a separate .png under the 'images' subdirectory
 -- and write out the json file for importing into spine.
-captureLayers(flattenedLayers, activeSprite, visibilities)
+captureLayers(flattenedLayers, activeSprite, effectiveVisibilities)
 
 -- Restore the layer's visibilities to how they were before
 restoreVisibilities(flattenedLayers, visibilities)
