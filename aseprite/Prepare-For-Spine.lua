@@ -85,9 +85,10 @@ Captures each layer as a separate PNG.  Ignores hidden layers.
 layers: The flattened view of the sprite layers
 sprite: The active sprite
 outputPath: the output json file path
+clearOldImages: if true, clear existing images folder before export
 effectiveVisibilities: the prior state of each layer's effectiveVisible visibility (true / false)
 ]]
-function captureLayers(layers, sprite, effectiveVisibilities, outputPath)
+function captureLayers(layers, sprite, effectiveVisibilities, outputPath, clearOldImages)
     -- Default output path to the sprite-name json in the sprite's directory.
     if (outputPath == nil or outputPath == "") then
         local defaultOutputDir = app.fs.filePath(sprite.filename)
@@ -100,6 +101,10 @@ function captureLayers(layers, sprite, effectiveVisibilities, outputPath)
     -- Create the output directory if it doesn't exist
     local separator = app.fs.pathSeparator
     local imagesDir = outputDir .. separator .. "images"
+    -- If the user chose to clear old images, delete the existing images directory and its contents before creating a new one
+    if (clearOldImages == true) then
+        deleteDirectoryRecursive(imagesDir)
+    end
     app.fs.makeDirectory(imagesDir)
 
     -- First hide all layers so we can selectively show them when we capture them
@@ -166,6 +171,22 @@ function restoreVisibilities(layers, visibilityStates)
     end
 end
 
+--[[
+Deletes a directory and its contents recursively.
+path: The path of the directory to delete
+]]
+function deleteDirectoryRecursive(path)
+    if (path == nil or path == "") then
+        return
+    end
+
+    if (app.fs.pathSeparator == "\\") then
+        os.execute('rmdir /S /Q "' .. path .. '"')
+    else
+        os.execute('rm -rf "' .. path .. '"')
+    end
+end
+
 
 -----------------------------------------------[[ UI ]]-----------------------------------------------
 --[[
@@ -180,37 +201,38 @@ function showExportOptionsDialog(defaultOutputPath)
     optionsDialog:check({
         id = "ignoreGroupVisibility",
         label = "Ignore Group Visibility",
-        tooltip = "If checked, layer visibility will only depend on the layer's own visibility setting, and not the visibility of any parent groups.",
+        text = "Use layer visibility only.",
         selected = false
     })
 
-    -- entry: Output json file path
+    -- check: Option to clear old images in the output images directory before export
+    optionsDialog:check({
+        id = "clearOldImages",
+        label = "Clear Old Images",
+        text = "Delete existing images first.",
+        selected = false
+    })
+    optionsDialog:separator({})
+    
+    -- entry: Output json path
     optionsDialog:entry({
         id = "outputPath",
         label = "Output Path",
         text = defaultOutputPath
     })
-    -- button: Open file picker to select output path
-    optionsDialog:button({
-        text = "Select Output Path",
-        onclick = function()
-            local currentPath = optionsDialog.data.outputPath
-            if (currentPath == nil or currentPath == "") then
-                currentPath = defaultOutputPath
-            end
-
-            local selectedPath = chooseOutputPath(currentPath)
+    -- file: File picker to select output json path (syncs with entry)
+    optionsDialog:file({
+        id = "outputPathPicker",
+        title = "Select Output Path",
+        save = true,
+        onchange = function()
+            local selectedPath = optionsDialog.data.outputPathPicker
             if (selectedPath ~= nil and selectedPath ~= "") then
                 optionsDialog:modify({ id = "outputPath", text = selectedPath })
-
-                -- Nested dialogs can leave stale paint artifacts in some builds; force a redraw.
-                pcall(function()
-                    app.refresh()
-                end)
             end
         end
     })
-    optionsDialog:newrow()
+    optionsDialog:separator({})
 
     -- button: Confirm export
     local confirmed = false
@@ -231,8 +253,12 @@ function showExportOptionsDialog(defaultOutputPath)
         end
     })
 
-    -- Show the dialog with an initial width of 800px.
-    optionsDialog:show({ wait = true, bounds = Rectangle(0, 0, 800, 220) })
+    -- Show the dialog with width 500 and centered position.
+    local dialogWidth = 500
+    local dialogHeight = 125
+    local x = (app.window.width - dialogWidth) / 2
+    local y = (app.window.height - dialogHeight) / 2
+    optionsDialog:show({ wait = true, bounds = Rectangle(x, y, dialogWidth, dialogHeight) })
     if (not confirmed) then
         return nil
     end
@@ -245,46 +271,6 @@ function showExportOptionsDialog(defaultOutputPath)
     end
 
     return options
-end
-
---[[
-Shows a file picker dialog to choose the output json path.
-initialPath: The initial json path to show in the file picker
-]]
-function chooseOutputPath(initialPath)
-    -- Default the filename to the same name as the sprite file, but with a .json extension
-    local spriteFileName = "export"
-    if (app.activeSprite ~= nil and app.activeSprite.filename ~= "") then
-        spriteFileName = app.fs.fileTitle(app.activeSprite.filename)
-    end
-    local defaultPath = initialPath
-    if (defaultPath == nil or defaultPath == "") then
-        local defaultOutputDir = app.fs.filePath(app.activeSprite.filename)
-        defaultPath = defaultOutputDir .. app.fs.pathSeparator .. spriteFileName .. ".json"
-    end
-
-    -- Create a file picker dialog to select the output directory and filename
-    local picker = Dialog("Select Output Path")
-    picker:file({
-        id = "path",
-        label = "Path",
-        filename = defaultPath,
-        save = true
-    })
-
-    -- button: Confirm selection
-    picker:button({ id = "confirm", text = "Confirm" })
-    -- button: Cancel selection
-    picker:button({ id = "cancel", text = "Cancel" })
-    picker:show({ wait = true })
-
-    -- If the user confirmed and provided a path, return it. Otherwise return nil.
-    local data = picker.data
-    if (data.confirm and data.path ~= nil and data.path ~= "") then
-        return data.path
-    end
-
-    return nil
 end
 
 
@@ -322,7 +308,7 @@ end
 local visibilities = captureVisibilityStates(flattenedLayers)
 
 -- Saves each sprite layer as a separate .png under the 'images' subdirectory
-captureLayers(flattenedLayers, activeSprite, effectiveVisibilities, options.outputPath)
+captureLayers(flattenedLayers, activeSprite, effectiveVisibilities, options.outputPath, options.clearOldImages)
 
 -- Restore the layer's visibilities to how they were before
 restoreVisibilities(flattenedLayers, visibilities)
