@@ -84,11 +84,13 @@ end
 Captures each layer as a separate PNG.  Ignores hidden layers.
 layers: The flattened view of the sprite layers
 sprite: The active sprite
+effectiveVisibilities: the prior state of each layer's effectiveVisible visibility (true / false)
 outputPath: the output json file path
 clearOldImages: if true, clear existing images folder before export
-effectiveVisibilities: the prior state of each layer's effectiveVisible visibility (true / false)
+originX, originY: the user-defined origin point for the exported Spine skeleton, as a percentage of the sprite's width and height (range 0-1)
+roundCoordinatesToInteger: if true, rounds the attachment coordinates to the nearest integer instead of keeping decimals (not recommended for pixel art)
 ]]
-function captureLayers(layers, sprite, effectiveVisibilities, outputPath, clearOldImages)
+function captureLayers(layers, sprite, effectiveVisibilities, outputPath, clearOldImages, originX, originY, roundCoordinatesToInteger)
     -- Default output path to the sprite-name json in the sprite's directory.
     if (outputPath == nil or outputPath == "") then
         local defaultOutputDir = app.fs.filePath(sprite.filename)
@@ -136,8 +138,18 @@ function captureLayers(layers, sprite, effectiveVisibilities, outputPath, clearO
             cropped:close()
             layer.isVisible = false
             local name = layer.name
+            -- Calculate the attachment position based on the cel position, cel bounds, sprite bounds, and the user-defined originX and originY.
+            local attachmentX = cel.bounds.width / 2 + cel.position.x - sprite.bounds.width * originX
+            local attachmentY = sprite.bounds.height * (1 - originY) - cel.position.y - cel.bounds.height / 2
             slotsJson[index] = string.format([[ { "name": "%s", "bone": "%s", "attachment": "%s" } ]], name, "root", name)
-            skinsJson[index] = string.format([[ "%s": { "%s": { "x": %d, "y": %d, "width": 1, "height": 1 } } ]], name, name, cel.bounds.width/2 + cel.position.x - sprite.bounds.width/2, sprite.bounds.height - cel.position.y - cel.bounds.height/2)
+            -- If roundCoordinatesToInteger is true, round the attachmentX and attachmentY to the nearest integer using math.modf.  Otherwise, keep the decimal values with 3 decimal places.
+            if (roundCoordinatesToInteger == true) then
+                attachmentX = math.modf(attachmentX)
+                attachmentY = math.modf(attachmentY)
+                skinsJson[index] = string.format([[ "%s": { "%s": { "x": %d, "y": %d, "width": 1, "height": 1 } } ]], name, name, attachmentX, attachmentY)
+            else
+                skinsJson[index] = string.format([[ "%s": { "%s": { "x": %.3f, "y": %.3f, "width": 1, "height": 1 } } ]], name, name, attachmentX, attachmentY)
+            end
             index = index + 1
         end
     end
@@ -157,7 +169,8 @@ function captureLayers(layers, sprite, effectiveVisibilities, outputPath, clearO
     json:write("}")
     json:close()
 
-    app.alert("Export completed!  Use file '" .. jsonFileName .. "' for importing into Spine.")
+    -- Show export completion dialog
+    showExportCompletedDialog(jsonFileName)
 end
 
 --[[
@@ -187,6 +200,25 @@ function deleteDirectoryRecursive(path)
     end
 end
 
+--[[
+Opens the OS file explorer and selects the exported file when possible.
+filePath: The full path of the exported file
+]]
+function openFileLocation(filePath)
+    if (filePath == nil or filePath == "") then
+        return
+    end
+
+    if (app.fs.pathSeparator == "\\") then
+        os.execute('explorer /select,"' .. filePath .. '"')
+    else
+        local dirPath = app.fs.filePath(filePath)
+        if (app.fs.pathSeparator == "/") then
+            os.execute('xdg-open "' .. dirPath .. '"')
+        end
+    end
+end
+
 
 -----------------------------------------------[[ UI ]]-----------------------------------------------
 --[[
@@ -196,6 +228,55 @@ defaultOutputPath: The default json output path
 function showExportOptionsDialog(defaultOutputPath)
     -- Create a dialog to show export optionsDialog
     local optionsDialog = Dialog({ title = "Export To Spine" })
+
+    -- label: Coordinate settings section
+    optionsDialog:label({
+        id = "coordinateSettings",
+        label = "Coordinate Settings",
+        text = "Set which position is used as the Spine origin (0,0). Range: [0,1]."
+    })
+    -- number: Coordinate origin X and Y (0-1).
+    optionsDialog:number({
+        id = "originX",
+        label = "Origin (X,Y)",
+        text = "0.5",
+        decimals = 3,
+    })
+    :number({
+        id = "originY",
+        text = "0",
+        decimals = 3,
+    })
+    -- check: Option to round attachment coordinates to integers instead of keeping decimals
+    optionsDialog:check({
+        id = "roundCoordinatesToInteger",
+        label = "Round Coordinates To Integer",
+        text = "Drop decimal pixels, May misalign pixels; not recommended for pixel art.",
+        selected = false
+    })
+    optionsDialog:separator({})
+    
+    -- entry: Output json path
+    optionsDialog:entry({
+        id = "outputPath",
+        label = "Output Path",
+        text = defaultOutputPath
+    })
+    -- file: File picker to select output json path (syncs with entry)
+    optionsDialog:file({
+        id = "outputPathPicker",
+        title = "Select Output Path",
+        filename = defaultOutputPath,
+        text = "Select Output Path",
+        save = true,
+        onchange = function()
+            local selectedPath = optionsDialog.data.outputPathPicker
+            if (selectedPath ~= nil and selectedPath ~= "") then
+                optionsDialog:modify({ id = "outputPath", text = selectedPath })
+            end
+        end
+    })
+    optionsDialog:separator({})
 
     -- check: Option to ignore group visibility when determining layer visibilityStates
     optionsDialog:check({
@@ -211,26 +292,6 @@ function showExportOptionsDialog(defaultOutputPath)
         label = "Clear Old Images",
         text = "Delete existing images first.",
         selected = false
-    })
-    optionsDialog:separator({})
-    
-    -- entry: Output json path
-    optionsDialog:entry({
-        id = "outputPath",
-        label = "Output Path",
-        text = defaultOutputPath
-    })
-    -- file: File picker to select output json path (syncs with entry)
-    optionsDialog:file({
-        id = "outputPathPicker",
-        title = "Select Output Path",
-        save = true,
-        onchange = function()
-            local selectedPath = optionsDialog.data.outputPathPicker
-            if (selectedPath ~= nil and selectedPath ~= "") then
-                optionsDialog:modify({ id = "outputPath", text = selectedPath })
-            end
-        end
     })
     optionsDialog:separator({})
 
@@ -255,7 +316,7 @@ function showExportOptionsDialog(defaultOutputPath)
 
     -- Show the dialog with width 500 and centered position.
     local dialogWidth = 500
-    local dialogHeight = 125
+    local dialogHeight = 190
     local x = (app.window.width - dialogWidth) / 2
     local y = (app.window.height - dialogHeight) / 2
     optionsDialog:show({ wait = true, bounds = Rectangle(x, y, dialogWidth, dialogHeight) })
@@ -269,8 +330,46 @@ function showExportOptionsDialog(defaultOutputPath)
     if (options.outputPath == nil or options.outputPath == "") then
         options.outputPath = defaultOutputPath
     end
+    
+    -- Parse originX and originY as numbers, and fallback to defaults if parsing fails or values are out of range
+    local parsedOriginX = tonumber(options.originX)
+    local parsedOriginY = tonumber(options.originY)
+    options.originX = (parsedOriginX ~= nil and parsedOriginX >= 0 and parsedOriginX <= 1) and parsedOriginX or 0.5
+    options.originY = (parsedOriginY ~= nil and parsedOriginY >= 0 and parsedOriginY <= 1) and parsedOriginY or 0
 
     return options
+end
+
+--[[
+Shows export completion dialog with action to open the exported file location.
+jsonFileName: The exported json file path
+]]
+function showExportCompletedDialog(jsonFileName)
+    local completedDialog = Dialog({ title = "Export Completed" })
+
+    completedDialog:label({
+        id = "message",
+        text = "Export completed! Use this file for importing into Spine:\n" .. jsonFileName
+    })
+
+    completedDialog:newrow()
+    completedDialog:button({
+        text = "Open File Folder",
+        onclick = function()
+            openFileLocation(jsonFileName)
+            completedDialog:close()
+        end
+    })
+
+    completedDialog:button({
+        text = "OK",
+        focus = true,
+        onclick = function()
+            completedDialog:close()
+        end
+    })
+
+    completedDialog:show({ wait = true })
 end
 
 
@@ -308,7 +407,16 @@ end
 local visibilities = captureVisibilityStates(flattenedLayers)
 
 -- Saves each sprite layer as a separate .png under the 'images' subdirectory
-captureLayers(flattenedLayers, activeSprite, effectiveVisibilities, options.outputPath, options.clearOldImages)
+captureLayers(
+    flattenedLayers, 
+    activeSprite, 
+    effectiveVisibilities, 
+    options.outputPath, 
+    options.clearOldImages, 
+    options.originX, 
+    options.originY,
+    options.roundCoordinatesToInteger
+)
 
 -- Restore the layer's visibilities to how they were before
 restoreVisibilities(flattenedLayers, visibilities)
