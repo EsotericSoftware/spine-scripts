@@ -293,11 +293,34 @@ end
 -----------------------------------------------[[ UI Functions ]]-----------------------------------------------
 --[[
 Shows the export options dialog and returns the selected options.
-defaultOutputPath: The default json output path
 ]]
-function showExportOptionsDialog(defaultOutputPath)
+function showExportOptionsDialog()
     -- Create a dialog to show export optionsDialog
     local optionsDialog = Dialog({ title = "Export To Spine" })
+
+    -- Load cached options or use defaults if no cache exists
+    local activeSprite = app.activeSprite
+    local spriteOutputDir = app.fs.filePath(activeSprite.filename)
+    local spriteOutputName = app.fs.fileTitle(activeSprite.filename)
+    local defaultOutputPath = spriteOutputDir .. app.fs.pathSeparator .. spriteOutputName .. ".json"
+    local cachedOptions, configPath = loadCachedOptions(defaultOutputPath)
+
+    --#region Other Buttons
+    -- button: Resets all options to their default values
+    optionsDialog:button({
+        text = "Reset Config",
+        onclick = function()
+            optionsDialog:modify({ id = "originX", text = string.format("%.3f", 0.5) })
+            optionsDialog:modify({ id = "originY", text = string.format("%.3f", 0) })
+            optionsDialog:modify({ id = "roundCoordinatesToInteger", selected = false })
+            optionsDialog:modify({ id = "outputPath", text = defaultOutputPath })
+            optionsDialog:modify({ id = "ignoreGroupVisibility", selected = false })
+            optionsDialog:modify({ id = "clearOldImages", selected = false })
+        end
+    })
+
+    optionsDialog:separator({})
+    --#endregion
 
     --#region Coordinate Settings
 
@@ -328,7 +351,7 @@ function showExportOptionsDialog(defaultOutputPath)
     optionsDialog:number({
         id = "originX",
         label = "Origin (X,Y)",
-        text = "0.500",
+        text = string.format("%.3f", cachedOptions.originX),
         decimals = 3,
         onchange = function()
             clampOriginField("originX", 0.5)
@@ -336,7 +359,7 @@ function showExportOptionsDialog(defaultOutputPath)
     })
     :number({
         id = "originY",
-        text = "0.000",
+        text = string.format("%.3f", cachedOptions.originY),
         decimals = 3,
         onchange = function()
             clampOriginField("originY", 0)
@@ -380,7 +403,7 @@ function showExportOptionsDialog(defaultOutputPath)
         id = "roundCoordinatesToInteger",
         label = "Round Coordinates To Integer",
         text = "Drop decimal pixels, May misalign pixels; not recommended for pixel art.",
-        selected = false
+        selected = cachedOptions.roundCoordinatesToInteger
     })
     optionsDialog:separator({})
 --#endregion
@@ -390,13 +413,13 @@ function showExportOptionsDialog(defaultOutputPath)
     optionsDialog:entry({
         id = "outputPath",
         label = "Output Path",
-        text = defaultOutputPath
+        text = cachedOptions.outputPath
     })
     -- file: File picker to select output json path (syncs with entry)
     optionsDialog:file({
         id = "outputPathPicker",
         title = "Select Output Path",
-        filename = defaultOutputPath,
+        filename = cachedOptions.outputPath,
         text = "Select Output Path",
         save = true,
         onchange = function()
@@ -415,7 +438,7 @@ function showExportOptionsDialog(defaultOutputPath)
         id = "ignoreGroupVisibility",
         label = "Ignore Group Visibility",
         text = "Use layer visibility only.",
-        selected = false
+        selected = cachedOptions.ignoreGroupVisibility
     })
 
     -- check: Option to clear old images in the output images directory before export
@@ -423,7 +446,7 @@ function showExportOptionsDialog(defaultOutputPath)
         id = "clearOldImages",
         label = "Clear Old Images",
         text = "Delete existing images first.",
-        selected = false
+        selected = cachedOptions.clearOldImages
     })
     optionsDialog:separator({})
     --#endregion
@@ -451,9 +474,6 @@ function showExportOptionsDialog(defaultOutputPath)
 
     -- Show the dialog and wait for user input.
     optionsDialog:show({ wait = true})
-    if (not confirmed) then
-        return nil
-    end
 
     --#region options Data Extraction
     -- Get the selected options from the dialog
@@ -467,7 +487,15 @@ function showExportOptionsDialog(defaultOutputPath)
     local parsedOriginY = tonumber(options.originY)
     options.originX = clampTo01(parsedOriginX or 0.5)
     options.originY = clampTo01(parsedOriginY or 0)
+
+    -- Save the options to cache so they will be remembered next time the dialog is opened.
+    saveCachedOptions(configPath, options)
     --#endregion
+
+    -- If the user did not confirm the export (clicked Cancel or closed the dialog), return nil.
+    if (not confirmed) then
+        return nil
+    end
 
     return options
 end
@@ -526,10 +554,89 @@ function showExportCompletedDialog(jsonFileName, failedPaths)
     completedDialog:show({ wait = true })
 end
 
+--#region Config Caching Functions
+
+--[[
+Parses a string boolean value.
+value: The string to parse ("true" or "false")
+fallback: The value to return if parsing fails (not "true" or "false")
+]]
+function parseBool(value, fallback)
+    if (value == "true") then
+        return true
+    elseif (value == "false") then
+        return false
+    end
+    return fallback
+end
+
+--[[
+Loads cached UI options from disk.
+defaultOutputPath: The default output path to use if no cached path is found
+]]
+function loadCachedOptions(defaultOutputPath)
+    local cached = {
+        originX = 0.5,
+        originY = 0,
+        roundCoordinatesToInteger = false,
+        outputPath = defaultOutputPath,
+        ignoreGroupVisibility = false,
+        clearOldImages = false
+    }
+    -- Create a config directory under the user's Aseprite config path, and define the config file path
+    local configDir = app.fs.joinPath(app.fs.filePath(app.fs.userConfigPath), "Cache")
+    app.fs.makeDirectory(configDir)
+    local configPath = app.fs.joinPath(configDir, "Prepare-For-Spine-Config.json")
+    local configFile = io.open(configPath, "r")
+    if (configFile == nil) then
+        return cached, configPath
+    end
+
+    local raw = {}
+    for line in configFile:lines() do
+        local key, value = string.match(line, "^([^=]+)=(.*)$")
+        if (key ~= nil and value ~= nil) then
+            raw[key] = value
+        end
+    end
+    configFile:close()
+
+    cached.originX = tonumber(raw.originX) or cached.originX
+    cached.originY = tonumber(raw.originY) or cached.originY
+    cached.roundCoordinatesToInteger = parseBool(raw.roundCoordinatesToInteger, cached.roundCoordinatesToInteger)
+    cached.ignoreGroupVisibility = parseBool(raw.ignoreGroupVisibility, cached.ignoreGroupVisibility)
+    cached.clearOldImages = parseBool(raw.clearOldImages, cached.clearOldImages)
+    if (raw.outputPath ~= nil and raw.outputPath ~= "") then
+        cached.outputPath = raw.outputPath
+    end
+
+    return cached, configPath
+end
+
+--[[
+Saves UI options to cache file.
+configPath: The path to the config file to save
+options: The options to save
+]]
+function saveCachedOptions(configPath, options)
+    local configFile = io.open(configPath, "w")
+    if (configFile == nil) then
+        return
+    end
+
+    configFile:write("originX=" .. string.format("%.3f", options.originX) .. "\n")
+    configFile:write("originY=" .. string.format("%.3f", options.originY) .. "\n")
+    configFile:write("roundCoordinatesToInteger=" .. tostring(options.roundCoordinatesToInteger == true) .. "\n")
+    configFile:write("outputPath=" .. (options.outputPath or "") .. "\n")
+    configFile:write("ignoreGroupVisibility=" .. tostring(options.ignoreGroupVisibility == true) .. "\n")
+    configFile:write("clearOldImages=" .. tostring(options.clearOldImages == true) .. "\n")
+    configFile:close()
+end
+--#endregion
+
 
 -----------------------------------------------[[ Main Execution ]]-----------------------------------------------
 local activeSprite = app.activeSprite
-
 if (activeSprite == nil) then
     -- If user has no active sprite selected in the UI
     app.alert("Please click the sprite you'd like to export")
@@ -541,10 +648,7 @@ elseif (activeSprite.filename == "") then
 end
 
 -- Show the export options dialog UI and get the user's selected options.
-local spriteOutputDir = app.fs.filePath(activeSprite.filename)
-local spriteOutputName = app.fs.fileTitle(activeSprite.filename)
-local defaultOutputPath = spriteOutputDir .. app.fs.pathSeparator .. spriteOutputName .. ".json"
-local options = showExportOptionsDialog(defaultOutputPath)
+local options = showExportOptionsDialog()
 if (options == nil) then
     return
 end
