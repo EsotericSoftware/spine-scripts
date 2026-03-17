@@ -40,17 +40,46 @@ Checks for duplicate layer names, and returns true if any exist (also shows an e
 layers: The flattened view of the sprite layers
 ]]
 function containsDuplicates(layers, visibilities)
+    local nameCounts = {} -- Map of layer name to count
+    local duplicateNames = {} -- List of layer duplicates names
+    -- Iterate through the layers and count the occurrences of each name among visible layers
     for i, layer in ipairs(layers) do
         if (not layer.isGroup and visibilities[i] == true) then
-            for j, otherLayer in ipairs(layers) do
-                -- if we find a duplicate in the list that is not our index
-                if (j ~= i) and (not otherLayer.isGroup) and (otherLayer.name == layer.name) and (visibilities[j] == true) then
-                    app.alert("Found multiple visible layers named '" .. layer.name .. "'.  Please use unique layer names or hide one of these layers.")
-                    return true
-                end
+            local name = layer.name
+            local count = (nameCounts[name] or 0) + 1
+            nameCounts[name] = count
+            if (count == 2) then
+                duplicateNames[#duplicateNames + 1] = name
             end
         end
     end
+
+    -- If any duplicates were found, show one dialog listing all duplicate names.
+    if (#duplicateNames > 0) then
+        table.sort(duplicateNames)
+        local duplicateDialog = Dialog({ title = "Duplicate Layer Names" })
+        duplicateDialog:label({
+            id = "message",
+            text = "Found duplicate visible layer names, Please use unique names:"
+        })
+        for _, duplicateName in ipairs(duplicateNames) do
+            duplicateDialog:newrow()
+            duplicateDialog:label({
+                text = duplicateName .. " ▸ Count: " .. nameCounts[duplicateName]
+            })
+        end
+        duplicateDialog:newrow()
+        duplicateDialog:button({
+            text = "OK",
+            focus = true,
+            onclick = function()
+                duplicateDialog:close()
+            end
+        })
+        duplicateDialog:show({ wait = true })
+        return true
+    end
+
     return false
 end
 
@@ -90,52 +119,91 @@ clearOldImages: if true, clear existing images folder before export
 originX, originY: the user-defined origin point for the exported Spine skeleton, as a percentage of the sprite's width and height (range 0-1)
 roundCoordinatesToInteger: if true, rounds the attachment coordinates to the nearest integer instead of keeping decimals (not recommended for pixel art)
 ]]
-function captureLayers(layers, sprite, effectiveVisibilities, outputPath, clearOldImages, originX, originY, roundCoordinatesToInteger)
+function captureLayers(
+    layers, 
+    sprite, 
+    effectiveVisibilities, 
+    outputPath, 
+    clearOldImages, 
+    originX, 
+    originY, 
+    roundCoordinatesToInteger)
     -- Default output path to the sprite-name json in the sprite's directory.
     if (outputPath == nil or outputPath == "") then
         local defaultOutputDir = app.fs.filePath(sprite.filename)
         local defaultSpriteName = app.fs.fileTitle(sprite.filename)
         outputPath = defaultOutputDir .. app.fs.pathSeparator .. defaultSpriteName .. ".json"
     end
-
     local outputDir = app.fs.filePath(outputPath)
-
-    -- Create the output directory if it doesn't exist
+    -- Create the output images directory if it doesn't exist
     local separator = app.fs.pathSeparator
     local imagesDir = outputDir .. separator .. "images"
-    -- If the user chose to clear old images, delete the existing images directory and its contents before creating a new one
+    -- If the user chose to clear old images, delete the existing images directory
     if (clearOldImages == true) then
         deleteDirectoryRecursive(imagesDir)
     end
     app.fs.makeDirectory(imagesDir)
 
+    -- record any failed paths so we can show an error to the user at the end.
+    local failedPaths = {}
+    local function addFailedPath(path)
+        if (path == nil or path == "") then
+            return
+        end
+        for _, existing in ipairs(failedPaths) do
+            if (existing == path) then
+                return
+            end
+        end
+        failedPaths[#failedPaths + 1] = path
+    end
+    -- Probe images directory write permission.
+    local probePath = imagesDir .. separator .. ".aseprite_write_probe.tmp"
+    local probeFile = io.open(probePath, "w")
+    if (probeFile ~= nil) then
+        probeFile:close()
+        os.remove(probePath)
+    else
+        addFailedPath(imagesDir)
+    end
+
     -- First hide all layers so we can selectively show them when we capture them
     hideAllLayers(layers)
 
+    -- Create and open the output json file for writing
     local jsonFileName = outputPath
-    json = io.open(jsonFileName, "w")
-    json:write('{')
-    -- skeleton
-    json:write([[ "skeleton": { "images": "images/" }, ]])
-    -- bones
-    json:write([[ "bones": [ { "name": "root" }	], ]])
-
+    local json = io.open(jsonFileName, "w")
+    if (json == nil) then
+        addFailedPath(jsonFileName)
+    else
+        json:write('{')
+        -- skeleton
+        json:write([[ "skeleton": { "images": "images/" }, ]])
+        -- bones
+        json:write([[ "bones": [ { "name": "root" }	], ]])
+    end
     -- build arrays of json properties for skins and slots
     -- we only include layers, not groups
     local slotsJson = {}
     local skinsJson = {}
     local index = 1
-    
     for i, layer in ipairs(layers) do
         -- Ignore groups and non-visible layers
         if (not layer.isGroup and effectiveVisibilities[i] == true) then
             -- Set the layer to visible so we can capture it, then set it back to hidden after
             layer.isVisible = true
             local cel = layer.cels[1]
-            local cropped = Sprite(sprite)
-            cropped:crop(cel.position.x, cel.position.y, cel.bounds.width, cel.bounds.height)
-            cropped:saveCopyAs(imagesDir .. separator .. layer.name .. ".png")
-            cropped:close()
+            local imagePath = imagesDir .. separator .. layer.name .. ".png"
+            local savedOk = false
+            savedOk = pcall(function()
+                local cropped = Sprite(sprite)
+                cropped:crop(cel.position.x, cel.position.y, cel.bounds.width, cel.bounds.height)
+                cropped:saveCopyAs(imagePath)
+                cropped:close()
+            end)
+            if (savedOk ~= true) then
+                addFailedPath(imagePath)
+            end
             layer.isVisible = false
             local name = layer.name
             -- Calculate the attachment position based on the cel position, cel bounds, sprite bounds, and the user-defined originX and originY.
@@ -155,22 +223,24 @@ function captureLayers(layers, sprite, effectiveVisibilities, outputPath, clearO
     end
 
     -- slots
-    json:write('"slots": [')
-    json:write(table.concat(slotsJson, ","))
-    json:write("],")
-    -- skins
-    json:write('"skins": {')
-    json:write('"default": {')
-    json:write(table.concat(skinsJson, ","))
-    json:write('}')
-    json:write('}')
+    if (json ~= nil) then
+        json:write('"slots": [')
+        json:write(table.concat(slotsJson, ","))
+        json:write("],")
+        -- skins
+        json:write('"skins": {')
+        json:write('"default": {')
+        json:write(table.concat(skinsJson, ","))
+        json:write('}')
+        json:write('}')
 
-    -- close the json
-    json:write("}")
-    json:close()
+        -- close the json
+        json:write("}")
+        json:close()
+    end
 
     -- Show export completion dialog
-    showExportCompletedDialog(jsonFileName)
+    showExportCompletedDialog(jsonFileName, failedPaths)
 end
 
 --[[
@@ -220,7 +290,7 @@ function openFileLocation(filePath)
 end
 
 
------------------------------------------------[[ UI ]]-----------------------------------------------
+-----------------------------------------------[[ UI Functions ]]-----------------------------------------------
 --[[
 Shows the export options dialog and returns the selected options.
 defaultOutputPath: The default json output path
@@ -229,7 +299,26 @@ function showExportOptionsDialog(defaultOutputPath)
     -- Create a dialog to show export optionsDialog
     local optionsDialog = Dialog({ title = "Export To Spine" })
 
-    -- label: Coordinate settings section
+    --#region Coordinate Settings
+
+    -- function: Clamps a number to the range [0,1].
+    local function clampTo01(value)
+        if (value < 0) then
+            return 0
+        elseif (value > 1) then
+            return 1
+        end
+        return value
+    end
+    -- function: Clamps the input field for originX and originY to the range [0,1].
+    local function clampOriginField(fieldId, fallback)
+        local parsed = tonumber(optionsDialog.data[fieldId])
+        if (parsed == nil) then
+            parsed = fallback
+        end
+        optionsDialog:modify({ id = fieldId, text = string.format("%.3f", clampTo01(parsed)) })
+    end
+
     optionsDialog:label({
         id = "coordinateSettings",
         label = "Coordinate Settings",
@@ -239,14 +328,53 @@ function showExportOptionsDialog(defaultOutputPath)
     optionsDialog:number({
         id = "originX",
         label = "Origin (X,Y)",
-        text = "0.5",
+        text = "0.500",
         decimals = 3,
+        onchange = function()
+            clampOriginField("originX", 0.5)
+        end
     })
     :number({
         id = "originY",
-        text = "0",
+        text = "0.000",
         decimals = 3,
+        onchange = function()
+            clampOriginField("originY", 0)
+        end
     })
+    
+    -- button: Presets for common origin settings (center, bottom-center, bottom-left, top-left)
+    local function setOriginPreset(x, y)
+        optionsDialog:modify({ id = "originX", text = string.format("%.3f", x) })
+        optionsDialog:modify({ id = "originY", text = string.format("%.3f", y) })
+    end
+    optionsDialog:newrow()
+    optionsDialog:button({
+        text = "Center",
+        onclick = function()
+            setOriginPreset(0.5, 0.5)
+        end
+    })
+    optionsDialog:button({
+        text = "Bottom-Center",
+        onclick = function()
+            setOriginPreset(0.5, 0)
+        end
+    })
+    optionsDialog:button({
+        text = "Bottom-Left",
+        onclick = function()
+            setOriginPreset(0, 0)
+        end
+    })
+    optionsDialog:button({
+        text = "Top-Left",
+        onclick = function()
+            setOriginPreset(0, 1)
+        end
+    })
+    optionsDialog:newrow()
+
     -- check: Option to round attachment coordinates to integers instead of keeping decimals
     optionsDialog:check({
         id = "roundCoordinatesToInteger",
@@ -255,7 +383,9 @@ function showExportOptionsDialog(defaultOutputPath)
         selected = false
     })
     optionsDialog:separator({})
-    
+--#endregion
+
+    --#region Output Path Settings
     -- entry: Output json path
     optionsDialog:entry({
         id = "outputPath",
@@ -277,7 +407,9 @@ function showExportOptionsDialog(defaultOutputPath)
         end
     })
     optionsDialog:separator({})
+    --#endregion
 
+    --#region Other Settings
     -- check: Option to ignore group visibility when determining layer visibilityStates
     optionsDialog:check({
         id = "ignoreGroupVisibility",
@@ -294,7 +426,9 @@ function showExportOptionsDialog(defaultOutputPath)
         selected = false
     })
     optionsDialog:separator({})
-
+    --#endregion
+    
+    --#region Execution Buttons
     -- button: Confirm export
     local confirmed = false
     optionsDialog:button({
@@ -313,29 +447,27 @@ function showExportOptionsDialog(defaultOutputPath)
             optionsDialog:close()
         end
     })
+    --#endregion
 
-    -- Show the dialog with width 500 and centered position.
-    local dialogWidth = 500
-    local dialogHeight = 190
-    local x = (app.window.width - dialogWidth) / 2
-    local y = (app.window.height - dialogHeight) / 2
-    optionsDialog:show({ wait = true, bounds = Rectangle(x, y, dialogWidth, dialogHeight) })
+    -- Show the dialog and wait for user input.
+    optionsDialog:show({ wait = true})
     if (not confirmed) then
         return nil
     end
 
+    --#region options Data Extraction
     -- Get the selected options from the dialog
     local options = optionsDialog.data
     -- Fallback to default path when input is empty.
     if (options.outputPath == nil or options.outputPath == "") then
         options.outputPath = defaultOutputPath
     end
-    
     -- Parse originX and originY as numbers, and fallback to defaults if parsing fails or values are out of range
     local parsedOriginX = tonumber(options.originX)
     local parsedOriginY = tonumber(options.originY)
-    options.originX = (parsedOriginX ~= nil and parsedOriginX >= 0 and parsedOriginX <= 1) and parsedOriginX or 0.5
-    options.originY = (parsedOriginY ~= nil and parsedOriginY >= 0 and parsedOriginY <= 1) and parsedOriginY or 0
+    options.originX = clampTo01(parsedOriginX or 0.5)
+    options.originY = clampTo01(parsedOriginY or 0)
+    --#endregion
 
     return options
 end
@@ -343,16 +475,38 @@ end
 --[[
 Shows export completion dialog with action to open the exported file location.
 jsonFileName: The exported json file path
+failedPaths: The list of file/directory paths that failed to write
 ]]
-function showExportCompletedDialog(jsonFileName)
+function showExportCompletedDialog(jsonFileName, failedPaths)
     local completedDialog = Dialog({ title = "Export Completed" })
 
+    -- Show the exported file path
     completedDialog:label({
         id = "message",
-        text = "Export completed! Use this file for importing into Spine:\n" .. jsonFileName
+        text = "Export completed! Use this file for importing into Spine:"
+    })
+    completedDialog:newrow()
+    completedDialog:label({
+        text = jsonFileName
     })
 
+    -- If there were any failed paths, show an error message and list the failed paths.
+    if failedPaths ~= nil and #failedPaths > 0 then
+        completedDialog:newrow()
+        completedDialog:label({
+            text = "Failed to write:"
+        })
+        -- List each failed path
+        for _, path in ipairs(failedPaths) do
+            completedDialog:newrow()
+            completedDialog:label({
+                text = path
+            })
+        end
+    end
+
     completedDialog:newrow()
+    -- Button to open the file location in the OS file explorer
     completedDialog:button({
         text = "Open File Folder",
         onclick = function()
@@ -360,7 +514,7 @@ function showExportCompletedDialog(jsonFileName)
             completedDialog:close()
         end
     })
-
+    -- Button to close the dialog
     completedDialog:button({
         text = "OK",
         focus = true,
@@ -408,12 +562,12 @@ local visibilities = captureVisibilityStates(flattenedLayers)
 
 -- Saves each sprite layer as a separate .png under the 'images' subdirectory
 captureLayers(
-    flattenedLayers, 
-    activeSprite, 
-    effectiveVisibilities, 
-    options.outputPath, 
-    options.clearOldImages, 
-    options.originX, 
+    flattenedLayers,
+    activeSprite,
+    effectiveVisibilities,
+    options.outputPath,
+    options.clearOldImages,
+    options.originX,
     options.originY,
     options.roundCoordinatesToInteger
 )
