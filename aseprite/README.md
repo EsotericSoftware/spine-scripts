@@ -4,8 +4,9 @@
 
 ___
 
-# aseprite-to-spine
 [中文版 文档](README_cn.md)
+
+# aseprite-to-spine
 
 ## Lua Script for importing Aseprite projects into Spine
 
@@ -28,8 +29,9 @@ After following these steps, the "Prepare-For-Spine" script should show up in th
 2. When you're ready to bring your art into Spine, save your project and run the ```Prepare-For-Spine``` script.  You can find it under **File > Scripts > Prepare-For-Spine**.
 3. Configure the export options as needed, then click the "Export" button.  By default, the script will export a JSON file and a folder of PNG images to the same directory as your Aseprite project file.
    * The default configuration is suitable for most users, so you can simply click the Export button to use the default settings.
+4. If you get a dialogue requesting permissions for the script, click "give full trust" (it's just requesting permission for the export script to save files).
 
-![alt text](Images/image.png)
+![alt text](Images/image-1.png)
 
 * Reset Config Button: Resets all options to their default values.
   * This will also clear any cached settings, so the next time you open the options dialog it will be restored to the default values.
@@ -51,13 +53,29 @@ After following these steps, the "Prepare-For-Spine" script should show up in th
   * After export completes, click the [Open File Folder] button to open the directory containing the exported files.
 * Cancel Button: Closes the options dialog without exporting.
 
-If you get a dialogue requesting permissions for the script, click "give full trust" (it's just requesting permission for the export script to save files).
-
 #### 「Spine Import」
 
 1. Open Spine and create a new project.
-2. Click the Spine Logo in the top left to open the file menu, and click **Import Data**.
+2. Click the Spine Logo in the top left to open the file menu, and click **[Import Data]**.
 3. Set up your Skeleton and start creating animations!
+
+![alt text](Images/image-2.png)
+
+* Import: Import source. Here, use the default selected option: JSON or binary file.
+  * JSON or binary file: Import from a JSON file or a binary file.
+  * Folder: Import from a folder.
+* File: Select the JSON file or folder to import.
+  * Click the folder icon button on the right to open the file picker dialog, then choose the JSON file to import or a folder that contains a JSON file.
+* Scale: Import scale. The default value is 1.0, which means no scaling.
+  * Adjust this value as needed. For example, set it to 0.5 to import assets at half size, or set it to 2.0 to import assets at double size.
+* New Project: If checked, a new project will be created during import. Otherwise, imported assets will be added to the currently open project.
+  * If you already created an empty new project, you do not need to check this option and can import directly.
+* Create a new skeleton: If checked, a new skeleton will be created during import.
+  * If you already created an empty new project, you do not need to check this option and can import directly.
+* Import into an existing skeleton: If checked, imported assets will be added to an existing skeleton.
+  * Replace existing attachments: If checked, attachments with the same name in the existing skeleton will be replaced during import.
+* Import button: Start importing with the current configuration.
+* Cancel button: Close the dialog and cancel the import.
 
 ### Known Issues
 
