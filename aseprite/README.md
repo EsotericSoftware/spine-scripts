@@ -74,6 +74,7 @@ After following these steps, the "Prepare-For-Spine" script should show up in th
   * If you already created an empty new project, you do not need to check this option and can import directly.
 * Import into an existing skeleton: If checked, imported assets will be added to an existing skeleton.
   * Replace existing attachments: If checked, attachments with the same name in the existing skeleton will be replaced during import.
+  * New layers will generate new attachments and be added to the existing skeleton, but the draw order may be incorrect and needs to be manually adjusted in Spine.
 * Import button: Start importing with the current configuration.
 * Cancel button: Close the dialog and cancel the import.
 
@@ -83,6 +84,7 @@ After following these steps, the "Prepare-For-Spine" script should show up in th
 
 * Opening the exported file location currently relies on `os` library APIs and may cause a brief UI stall (a few seconds).
 * Deleting old `images` files also relies on `os` library APIs and may cause a brief UI stall.
+* New layers added in Aseprite may have incorrect draw order when imported into an existing Spine skeleton, and need to be adjusted manually in Spine.
 
 #### v1.1
 
