@@ -6,31 +6,30 @@ https://github.com/jordanbleu/aseprite-to-spine
 
 -----------------------------------------------[[ Functions ]]-----------------------------------------------
 --[[
-Flattens the layers of a sprite while allowing optional ignore of parent group visibility.
+Flattens the layers of a sprite and computes each layer's export visibility.
 parent: The sprite or parent layer group
 outLayers: The array to append the flattened layers
 outVis: The array to append the effective visibility of each layer (true / false)
-inheritedVisible: The visibility inherited from parent groups (true / false)
-ignoreGroupVisibility: If true, visibility only depends on the layer's own isVisible value
+groupIsVisible: The visibility inherited from parent groups (true / false)
+ignoreHiddenLayers: If true, hidden layers and layers under hidden groups are excluded
 ]]
-function flattenWithEffectiveVisibility(parent, outLayers, outVis, inheritedVisible, ignoreGroupVisibility)
+function flattenWithEffectiveVisibility(parent, outLayers, outVis, groupIsVisible, ignoreHiddenLayers)
     for _, layer in ipairs(parent.layers) do
         -- Determine the effective visibility of the layer based on its own visibility and the inherited visibility from parent groups
         local effectiveVisible
-        if (ignoreGroupVisibility) then
-            effectiveVisible = layer.isVisible
+        if (ignoreHiddenLayers) then
+            effectiveVisible = groupIsVisible and layer.isVisible
         else
-            effectiveVisible = inheritedVisible and layer.isVisible
+            effectiveVisible = true
         end
-
+        
         -- Append the layer and its effective visibility to the output arrays
         outLayers[#outLayers + 1] = layer
         outVis[#outVis + 1] = effectiveVisible
-
-        -- If this layer is a group, recursively flatten its children, passing down the effective visibilityStates
+        
+        -- If this layer is a group, recursively flatten its children, passing down the effective visibility
         if layer.isGroup then
-            local nextInherited = ignoreGroupVisibility and true or effectiveVisible
-            flattenWithEffectiveVisibility(layer, outLayers, outVis, nextInherited, ignoreGroupVisibility)
+            flattenWithEffectiveVisibility(layer, outLayers, outVis, effectiveVisible, ignoreHiddenLayers)
         end
     end
 end
@@ -120,13 +119,13 @@ originX, originY: the user-defined origin point for the exported Spine skeleton,
 roundCoordinatesToInteger: if true, rounds the attachment coordinates to the nearest integer instead of keeping decimals (not recommended for pixel art)
 ]]
 function captureLayers(
-    layers,
-    sprite,
-    effectiveVisibilities,
-    outputPath,
-    clearOldImages,
-    originX,
-    originY,
+    layers, 
+    sprite, 
+    effectiveVisibilities, 
+    outputPath, 
+    clearOldImages, 
+    originX, 
+    originY, 
     roundCoordinatesToInteger)
     -- Default output path to the sprite-name json in the sprite's directory.
     if (outputPath == nil or outputPath == "") then
@@ -296,25 +295,28 @@ Shows the export options dialog and returns the selected options.
 ]]
 function showExportOptionsDialog()
     -- Create a dialog to show export optionsDialog
-    local optionsDialog = Dialog({ title = "Export To Spine" })
+    local optionsDialog = Dialog({ title = "Export To Spine v1.3" })
 
     -- Load cached options or use defaults if no cache exists
     local activeSprite = app.activeSprite
+    local spriteWidth, spriteHeight = getActiveSpriteSize()
     local spriteOutputDir = app.fs.filePath(activeSprite.filename)
     local spriteOutputName = app.fs.fileTitle(activeSprite.filename)
     local defaultOutputPath = spriteOutputDir .. app.fs.pathSeparator .. spriteOutputName .. ".json"
     local cachedOptions, configPath = loadCachedOptions(defaultOutputPath)
+    CURRENT_ORIGIN_MODE = cachedOptions.originMode
 
     --#region Other Buttons
     -- button: Resets all options to their default values
     optionsDialog:button({
         text = "Reset Config",
         onclick = function()
+            setOriginMode(optionsDialog, ORIGIN_MODE.NORMALIZED)
             optionsDialog:modify({ id = "originX", text = string.format("%.3f", 0.5) })
             optionsDialog:modify({ id = "originY", text = string.format("%.3f", 0) })
             optionsDialog:modify({ id = "roundCoordinatesToInteger", selected = false })
             optionsDialog:modify({ id = "outputPath", text = defaultOutputPath })
-            optionsDialog:modify({ id = "ignoreGroupVisibility", selected = false })
+            optionsDialog:modify({ id = "ignoreHiddenLayers", selected = true })
             optionsDialog:modify({ id = "clearOldImages", selected = false })
         end
     })
@@ -324,37 +326,40 @@ function showExportOptionsDialog()
 
     --#region Coordinate Settings
 
-    -- function: Clamps a number to the range [0,1].
-    local function clampTo01(value)
-        if (value < 0) then
-            return 0
-        elseif (value > 1) then
-            return 1
-        end
-        return value
-    end
-    -- function: Clamps the input field for originX and originY to the range [0,1].
-    local function clampOriginField(fieldId, fallback)
-        local parsed = tonumber(optionsDialog.data[fieldId])
-        if (parsed == nil) then
-            parsed = fallback
-        end
-        optionsDialog:modify({ id = fieldId, text = string.format("%.3f", clampTo01(parsed)) })
-    end
-
     optionsDialog:label({
         id = "coordinateSettings",
         label = "Coordinate Settings",
         text = "Set which position is used as the Spine origin (0,0). Range: [0,1]."
     })
-    -- number: Coordinate origin X and Y (0-1).
+    -- radio: Option to choose between normalized coordinates (0-1) or pixel-based coordinates
+    optionsDialog:radio({
+        id = "originModeNormalized",
+        label = "Origin Mode",
+        text = ORIGIN_MODE.NORMALIZED,
+        selected = cachedOptions.originMode == ORIGIN_MODE.NORMALIZED,
+        onclick = function()
+            setOriginMode(optionsDialog, ORIGIN_MODE.NORMALIZED)
+            applyOriginMode(optionsDialog)
+        end
+    })
+    optionsDialog:radio({
+        id = "originModePixel",
+        text = ORIGIN_MODE.PIXEL,
+        selected = cachedOptions.originMode == ORIGIN_MODE.PIXEL,
+        onclick = function()
+            setOriginMode(optionsDialog, ORIGIN_MODE.PIXEL)
+            applyOriginMode(optionsDialog)
+        end
+    })
+    setOriginMode(optionsDialog, cachedOptions.originMode)
+    -- number + slider: Coordinate origin X and Y.
     optionsDialog:number({
         id = "originX",
         label = "Origin (X,Y)",
         text = string.format("%.3f", cachedOptions.originX),
         decimals = 3,
         onchange = function()
-            clampOriginField("originX", 0.5)
+            clampOriginXyFieldValue(optionsDialog)
         end
     })
     :number({
@@ -362,38 +367,53 @@ function showExportOptionsDialog()
         text = string.format("%.3f", cachedOptions.originY),
         decimals = 3,
         onchange = function()
-            clampOriginField("originY", 0)
+            clampOriginXyFieldValue(optionsDialog)
         end
     })
+    :slider({
+        id = "originXSlider",
+        min = 0,
+        max = ORIGIN_SLIDER_STEPS,
+        value = 0,
+        onchange = function()
+            applyOriginSliderChange(optionsDialog, "x")
+        end
+    })
+    :slider({
+        id = "originYSlider",
+        min = 0,
+        max = ORIGIN_SLIDER_STEPS,
+        value = 0,
+        onchange = function()
+            applyOriginSliderChange(optionsDialog, "y")
+        end
+    })
+    applyOriginMode(optionsDialog)
 
     -- button: Presets for common origin settings (center, bottom-center, bottom-left, top-left)
-    local function setOriginPreset(x, y)
-        optionsDialog:modify({ id = "originX", text = string.format("%.3f", x) })
-        optionsDialog:modify({ id = "originY", text = string.format("%.3f", y) })
-    end
     optionsDialog:newrow()
     optionsDialog:button({
         text = "Center",
         onclick = function()
-            setOriginPreset(0.5, 0.5)
+            setOriginPreset(optionsDialog, "center")
         end
     })
     optionsDialog:button({
         text = "Bottom-Center",
         onclick = function()
-            setOriginPreset(0.5, 0)
+            setOriginPreset(optionsDialog, "bottom-center")
         end
     })
     optionsDialog:button({
         text = "Bottom-Left",
         onclick = function()
-            setOriginPreset(0, 0)
+            setOriginPreset(optionsDialog, "bottom-left")
         end
     })
     optionsDialog:button({
         text = "Top-Left",
         onclick = function()
-            setOriginPreset(0, 1)
+            setOriginPreset(optionsDialog, "top-left")
         end
     })
     optionsDialog:newrow()
@@ -406,7 +426,7 @@ function showExportOptionsDialog()
         selected = cachedOptions.roundCoordinatesToInteger
     })
     optionsDialog:separator({})
-    --#endregion
+--#endregion
 
     --#region Output Path Settings
     -- entry: Output json path
@@ -433,12 +453,12 @@ function showExportOptionsDialog()
     --#endregion
 
     --#region Other Settings
-    -- check: Option to ignore group visibility when determining layer visibilityStates
+    -- check: Option to skip exporting hidden layers (including layers under hidden groups)
     optionsDialog:check({
-        id = "ignoreGroupVisibility",
-        label = "Ignore Group Visibility",
-        text = "Use layer visibility only.",
-        selected = cachedOptions.ignoreGroupVisibility
+        id = "ignoreHiddenLayers",
+        label = "Ignore Hidden Layers",
+        text = "Hidden layers and layers under hidden groups will not be output.",
+        selected = cachedOptions.ignoreHiddenLayers
     })
 
     -- check: Option to clear old images in the output images directory before export
@@ -450,7 +470,7 @@ function showExportOptionsDialog()
     })
     optionsDialog:separator({})
     --#endregion
-
+    
     --#region Execution Buttons
     -- button: Confirm export
     local confirmed = false
@@ -476,17 +496,26 @@ function showExportOptionsDialog()
     optionsDialog:show({ wait = true})
 
     --#region options Data Extraction
-    -- Get the selected options from the dialog
+    -- Get the selected options
     local options = optionsDialog.data
+    options.originMode = getOriginMode()
     -- Fallback to default path when input is empty.
     if (options.outputPath == nil or options.outputPath == "") then
         options.outputPath = defaultOutputPath
     end
     -- Parse originX and originY as numbers, and fallback to defaults if parsing fails or values are out of range
+    if (options.originMode ~= ORIGIN_MODE.PIXEL and options.originMode ~= ORIGIN_MODE.NORMALIZED) then
+        options.originMode = ORIGIN_MODE.NORMALIZED
+    end
     local parsedOriginX = tonumber(options.originX)
     local parsedOriginY = tonumber(options.originY)
-    options.originX = clampTo01(parsedOriginX or 0.5)
-    options.originY = clampTo01(parsedOriginY or 0)
+    if (options.originMode == ORIGIN_MODE.PIXEL) then
+        options.originX = clampValue(parsedOriginX or (spriteWidth * 0.5), 0, spriteWidth)
+        options.originY = clampValue(parsedOriginY or 0, 0, spriteHeight)
+    elseif (options.originMode == ORIGIN_MODE.NORMALIZED) then
+        options.originX = clampValue(parsedOriginX or 0.5, 0, 1)
+        options.originY = clampValue(parsedOriginY or 0, 0, 1)
+    end
 
     -- Save the options to cache so they will be remembered next time the dialog is opened.
     saveCachedOptions(configPath, options)
@@ -554,6 +583,348 @@ function showExportCompletedDialog(jsonFileName, failedPaths)
     completedDialog:show({ wait = true })
 end
 
+--#region Coordinates Origin Mode Functions
+ORIGIN_MODE = {
+    NORMALIZED = "Normalized", -- Normalized origin coordinates in the range [0,1], where (0,0) is the bottom-left.
+    PIXEL = "Pixel", -- Pixel-based origin coordinates, where (0,0) is the bottom-left of the sprite and values are in pixels.
+}
+CURRENT_ORIGIN_MODE = ORIGIN_MODE.NORMALIZED
+ORIGIN_SLIDER_STEPS = 100
+ORIGIN_SLIDER_IS_SYNCING = false
+
+--[[
+Sets the selected origin mode radio button in the options dialog based on the given mode.
+optionsDialog: The export options dialog instance
+mode: The origin mode to select (ORIGIN_MODE.PIXEL or ORIGIN_MODE.NORMALIZED)
+]]
+function setOriginMode(optionsDialog, mode)
+    local currentMode = CURRENT_ORIGIN_MODE
+
+    if (currentMode ~= mode) then
+        convertOriginCoordinatesByMode(optionsDialog, mode)
+        optionsDialog:modify({ id = "originModeNormalized", selected = mode == ORIGIN_MODE.NORMALIZED })
+        optionsDialog:modify({ id = "originModePixel", selected = mode == ORIGIN_MODE.PIXEL })
+        CURRENT_ORIGIN_MODE = mode
+    else
+        optionsDialog:modify({ id = "originModeNormalized", selected = mode == ORIGIN_MODE.NORMALIZED })
+        optionsDialog:modify({ id = "originModePixel", selected = mode == ORIGIN_MODE.PIXEL })
+    end
+end
+
+--[[
+Gets the currently selected origin mode from the options dialog.
+optionsDialog: The export options dialog instance
+]]
+function getOriginMode()
+    return CURRENT_ORIGIN_MODE
+end
+
+--[[
+Applies the selected origin mode to the originX and originY fields.
+optionsDialog: The export options dialog instance
+]]
+function applyOriginMode(optionsDialog)
+    local spriteWidth, spriteHeight = getActiveSpriteSize()
+    local mode = getOriginMode()
+
+    local currentX = tonumber(optionsDialog.data.originX)
+    local currentY = tonumber(optionsDialog.data.originY)
+    if (mode == ORIGIN_MODE.PIXEL) then
+        if (currentX == nil) then
+            currentX = spriteWidth * 0.5
+        end
+        if (currentY == nil) then
+            currentY = 0
+        end
+    else
+        if (currentX == nil) then
+            currentX = 0.5
+        end
+        if (currentY == nil) then
+            currentY = 0
+        end
+    end
+
+    optionsDialog:modify({ id = "originX", text = tostring(currentX) })
+    optionsDialog:modify({ id = "originY", text = tostring(currentY) })
+    clampOriginXyFieldValue(optionsDialog)
+
+    -- Update the coordinate settings label to show the valid input range for the selected origin mode
+    if (mode == ORIGIN_MODE.PIXEL) then
+        optionsDialog:modify({
+            id = "coordinateSettings",
+            text = string.format("Set Spine origin(0,0) in pixels. Range X:[0,%.0f], Y:[0,%.0f]", spriteWidth, spriteHeight)
+        })
+    elseif (mode == ORIGIN_MODE.NORMALIZED) then
+        optionsDialog:modify({
+            id = "coordinateSettings",
+            text = "Set Spine origin(0,0) in normalized coordinates. Range: [0,1]"
+        })
+    end
+end
+
+--[[
+Converts current origin coordinates in the options dialog between normalized and pixel modes.
+optionsDialog: The export options dialog instance
+toMode: The target mode
+]]
+function convertOriginCoordinatesByMode(optionsDialog, toMode)
+    local spriteWidth, spriteHeight = getActiveSpriteSize()
+    if (spriteWidth == nil or spriteWidth <= 0) then
+        spriteWidth = 1
+    end
+    if (spriteHeight == nil or spriteHeight <= 0) then
+        spriteHeight = 1
+    end
+
+    local originX = tonumber(optionsDialog.data.originX)
+    local originY = tonumber(optionsDialog.data.originY)
+
+    if (originX == nil) then
+        if (toMode == ORIGIN_MODE.PIXEL) then
+            originX = 0.5
+        else
+            originX = spriteWidth * 0.5
+        end
+    end
+    if (originY == nil) then
+        originY = 0
+    end
+
+    local convertedX
+    local convertedY
+    if (toMode == ORIGIN_MODE.PIXEL) then
+        convertedX = originX * spriteWidth
+        convertedY = originY * spriteHeight
+    else
+        convertedX = originX / spriteWidth
+        convertedY = originY / spriteHeight
+    end
+
+    optionsDialog:modify({ id = "originX", text = tostring(convertedX) })
+    optionsDialog:modify({ id = "originY", text = tostring(convertedY) })
+end
+
+--[[
+Clamps the originX and originY fields in the options dialog to valid ranges based on the selected origin mode.
+optionsDialog: The export options dialog instance
+]]
+function clampOriginXyFieldValue(optionsDialog)
+    -- Determine the valid range for originX and originY based on the selected origin mode
+    local spriteWidth, spriteHeight = getActiveSpriteSize()
+    local mode = getOriginMode()
+    local maxX = mode == ORIGIN_MODE.PIXEL and spriteWidth or 1
+    local maxY = mode == ORIGIN_MODE.PIXEL and spriteHeight or 1
+
+    -- Parse the current values of originX and originY, and fallback to defaults if parsing fails
+    local parsedX = tonumber(optionsDialog.data.originX)
+    local parsedY = tonumber(optionsDialog.data.originY)
+    if (parsedX == nil) then
+        parsedX = mode == ORIGIN_MODE.PIXEL and (spriteWidth * 0.5) or 0.5
+    end
+    if (parsedY == nil) then
+        parsedY = 0
+    end
+
+    local clampedX = clampValue(parsedX, 0, maxX)
+    local clampedY = clampValue(parsedY, 0, maxY)
+    optionsDialog:modify({ id = "originX", text = string.format("%.3f", clampedX) })
+    optionsDialog:modify({ id = "originY", text = string.format("%.3f", clampedY) })
+    syncOriginSlidersFromFields(optionsDialog)
+end
+
+--[[
+Sets the originX and originY fields in the options dialog to preset values based on common Spine origin settings.
+optionsDialog: The export options dialog instance
+presetName: The name of the preset to apply ("center", "bottom-center", "top-left", "bottom-left")
+]]
+function setOriginPreset(optionsDialog, presetName)
+    local spriteWidth, spriteHeight = getActiveSpriteSize()
+    local mode = getOriginMode()
+
+    local x = 0
+    local y = 0
+    if (presetName == "center") then
+        if (mode == ORIGIN_MODE.PIXEL) then
+            x = spriteWidth * 0.5
+            y = spriteHeight * 0.5
+        else
+            x = 0.5
+            y = 0.5
+        end
+    elseif (presetName == "bottom-center") then
+        if (mode == ORIGIN_MODE.PIXEL) then
+            x = spriteWidth * 0.5
+            y = 0
+        else
+            x = 0.5
+            y = 0
+        end
+    elseif (presetName == "top-left") then
+        if (mode == ORIGIN_MODE.PIXEL) then
+            x = 0
+            y = spriteHeight
+        else
+            x = 0
+            y = 1
+        end
+    elseif (presetName == "bottom-left") then
+        if (mode == ORIGIN_MODE.PIXEL) then
+            x = 0
+            y = 0
+        else
+            x = 0
+            y = 0
+        end
+    end
+
+    optionsDialog:modify({ id = "originX", text = string.format("%.3f", x) })
+    optionsDialog:modify({ id = "originY", text = string.format("%.3f", y) })
+    clampOriginXyFieldValue(optionsDialog)
+end
+
+--[[
+Converts origin coordinates to normalized values based on the selected origin mode.
+mode: The origin mode (ORIGIN_MODE.PIXEL or ORIGIN_MODE.NORMALIZED)
+originX: The X coordinate of the origin
+originY: The Y coordinate of the origin
+]]
+function getNormalizeOriginCoordinates(mode, originX, originY)
+    -- If the mode is PIXEL, convert the pixel-based originX and originY to normalized coordinates.
+    if (mode == ORIGIN_MODE.PIXEL) then
+        local spriteWidth, spriteHeight = getActiveSpriteSize()
+        if (spriteWidth == nil or spriteWidth <= 0) then
+            spriteWidth = 1
+        end
+        if (spriteHeight == nil or spriteHeight <= 0) then
+            spriteHeight = 1
+        end
+
+        local normalizedX = clampValue((originX or 0) / spriteWidth, 0, 1)
+        local normalizedY = clampValue((originY or 0) / spriteHeight, 0, 1)
+        return normalizedX, normalizedY
+    end
+
+    return clampValue(originX or 0.5, 0, 1), clampValue(originY or 0, 0, 1)
+end
+
+--[[
+Clamps a value between a minimum and maximum range.
+value: The value to clamp
+minValue: The minimum allowed value
+maxValue: The maximum allowed value
+]]
+function clampValue(value, minValue, maxValue)
+    if (value < minValue) then
+        return minValue
+    elseif (value > maxValue) then
+        return maxValue
+    end
+    return value
+end
+
+-- Returns the width and height of the active sprite, or 0 if no active sprite is found.
+function getActiveSpriteSize()
+    local activeSprite = app.activeSprite
+    local spriteWidth = 0
+    local spriteHeight = 0
+    if (activeSprite ~= nil and activeSprite.bounds ~= nil) then
+        spriteWidth = activeSprite.bounds.width
+        spriteHeight = activeSprite.bounds.height
+    end
+    return spriteWidth, spriteHeight
+end
+
+--#region Origin Coordinate Sliders Functions
+
+-- Converts a coordinate value into slider step value based on current mode range.
+function toOriginSliderValue(value, maxValue)
+    if (maxValue == nil or maxValue <= 0) then
+        maxValue = 1
+    end
+    local normalized = clampValue((value or 0) / maxValue, 0, 1)
+    return math.floor(normalized * ORIGIN_SLIDER_STEPS + 0.5)
+end
+
+-- Converts a slider step value back into coordinate value based on current mode range.
+function fromOriginSliderValue(sliderValue, maxValue)
+    if (maxValue == nil or maxValue <= 0) then
+        maxValue = 1
+    end
+    local step = clampValue(sliderValue or 0, 0, ORIGIN_SLIDER_STEPS)
+    local normalized = step / ORIGIN_SLIDER_STEPS
+    return normalized * maxValue
+end
+
+-- Syncs the slider positions from current originX/originY input values.
+function syncOriginSlidersFromFields(optionsDialog)
+    if (ORIGIN_SLIDER_IS_SYNCING) then
+        return
+    end
+
+    local spriteWidth, spriteHeight = getActiveSpriteSize()
+    local mode = getOriginMode()
+    local maxX = mode == ORIGIN_MODE.PIXEL and spriteWidth or 1
+    local maxY = mode == ORIGIN_MODE.PIXEL and spriteHeight or 1
+
+    if (maxX <= 0) then
+        maxX = 1
+    end
+    if (maxY <= 0) then
+        maxY = 1
+    end
+
+    local x = tonumber(optionsDialog.data.originX)
+    local y = tonumber(optionsDialog.data.originY)
+    if (x == nil) then
+        x = mode == ORIGIN_MODE.PIXEL and (spriteWidth * 0.5) or 0.5
+    end
+    if (y == nil) then
+        y = 0
+    end
+
+    ORIGIN_SLIDER_IS_SYNCING = true
+    optionsDialog:modify({ id = "originXSlider", value = toOriginSliderValue(x, maxX) })
+    optionsDialog:modify({ id = "originYSlider", value = toOriginSliderValue(y, maxY) })
+    ORIGIN_SLIDER_IS_SYNCING = false
+end
+
+-- Applies slider movement back to originX/originY inputs.
+function applyOriginSliderChange(optionsDialog, axis)
+    if (ORIGIN_SLIDER_IS_SYNCING) then
+        return
+    end
+
+    local spriteWidth, spriteHeight = getActiveSpriteSize()
+    local mode = getOriginMode()
+    local maxX = mode == ORIGIN_MODE.PIXEL and spriteWidth or 1
+    local maxY = mode == ORIGIN_MODE.PIXEL and spriteHeight or 1
+
+    if (maxX <= 0) then
+        maxX = 1
+    end
+    if (maxY <= 0) then
+        maxY = 1
+    end
+
+    local sliderX = tonumber(optionsDialog.data.originXSlider) or 0
+    local sliderY = tonumber(optionsDialog.data.originYSlider) or 0
+
+    ORIGIN_SLIDER_IS_SYNCING = true
+    if (axis == "x") then
+        local x = fromOriginSliderValue(sliderX, maxX)
+        optionsDialog:modify({ id = "originX", text = string.format("%.3f", x) })
+    elseif (axis == "y") then
+        local y = fromOriginSliderValue(sliderY, maxY)
+        optionsDialog:modify({ id = "originY", text = string.format("%.3f", y) })
+    end
+    ORIGIN_SLIDER_IS_SYNCING = false
+
+    clampOriginXyFieldValue(optionsDialog)
+end
+--#endregion
+--#endregion
+
 --#region Config Caching Functions
 
 --[[
@@ -578,9 +949,10 @@ function loadCachedOptions(defaultOutputPath)
     local cached = {
         originX = 0.5,
         originY = 0,
+        originMode = ORIGIN_MODE.NORMALIZED,
         roundCoordinatesToInteger = false,
         outputPath = defaultOutputPath,
-        ignoreGroupVisibility = false,
+        ignoreHiddenLayers = true,
         clearOldImages = false
     }
     -- Create a config directory under the user's Aseprite config path, and define the config file path
@@ -603,8 +975,11 @@ function loadCachedOptions(defaultOutputPath)
 
     cached.originX = tonumber(raw.originX) or cached.originX
     cached.originY = tonumber(raw.originY) or cached.originY
+    if (raw.originMode == ORIGIN_MODE.PIXEL or raw.originMode == ORIGIN_MODE.NORMALIZED) then
+        cached.originMode = raw.originMode
+    end
     cached.roundCoordinatesToInteger = parseBool(raw.roundCoordinatesToInteger, cached.roundCoordinatesToInteger)
-    cached.ignoreGroupVisibility = parseBool(raw.ignoreGroupVisibility, cached.ignoreGroupVisibility)
+    cached.ignoreHiddenLayers = parseBool(raw.ignoreHiddenLayers, cached.ignoreHiddenLayers)
     cached.clearOldImages = parseBool(raw.clearOldImages, cached.clearOldImages)
     if (raw.outputPath ~= nil and raw.outputPath ~= "") then
         cached.outputPath = raw.outputPath
@@ -626,9 +1001,10 @@ function saveCachedOptions(configPath, options)
 
     configFile:write("originX=" .. string.format("%.3f", options.originX) .. "\n")
     configFile:write("originY=" .. string.format("%.3f", options.originY) .. "\n")
+    configFile:write("originMode=" .. (options.originMode or ORIGIN_MODE.NORMALIZED) .. "\n")
     configFile:write("roundCoordinatesToInteger=" .. tostring(options.roundCoordinatesToInteger == true) .. "\n")
     configFile:write("outputPath=" .. (options.outputPath or "") .. "\n")
-    configFile:write("ignoreGroupVisibility=" .. tostring(options.ignoreGroupVisibility == true) .. "\n")
+    configFile:write("ignoreHiddenLayers=" .. tostring(options.ignoreHiddenLayers == true) .. "\n")
     configFile:write("clearOldImages=" .. tostring(options.clearOldImages == true) .. "\n")
     configFile:close()
 end
@@ -655,7 +1031,7 @@ end
 
 local flattenedLayers = {} -- This will be the flattened view of the sprite layers, ignoring groups
 local effectiveVisibilities = {} -- This will be the effective visibility of each layer (true / false)
-flattenWithEffectiveVisibility(activeSprite, flattenedLayers, effectiveVisibilities, true, options.ignoreGroupVisibility)
+flattenWithEffectiveVisibility(activeSprite, flattenedLayers, effectiveVisibilities, true, options.ignoreHiddenLayers)
 
 if (containsDuplicates(flattenedLayers, effectiveVisibilities)) then
     return
@@ -664,6 +1040,12 @@ end
 -- Get an array containing each layer index and whether it is currently visible
 local visibilities = captureVisibilityStates(flattenedLayers)
 
+-- Calculate the normalized origin coordinates (range 0-1) based on the user's selected origin mode and input values
+local normalizedOriginX, normalizedOriginY = getNormalizeOriginCoordinates(
+    options.originMode,
+    options.originX,
+    options.originY
+)
 -- Saves each sprite layer as a separate .png under the 'images' subdirectory
 captureLayers(
     flattenedLayers,
@@ -671,8 +1053,8 @@ captureLayers(
     effectiveVisibilities,
     options.outputPath,
     options.clearOldImages,
-    options.originX,
-    options.originY,
+    normalizedOriginX,
+    normalizedOriginY,
     options.roundCoordinatesToInteger
 )
 
