@@ -22,11 +22,11 @@ function flattenWithEffectiveVisibility(parent, outLayers, outVis, inheritedVisi
         else
             effectiveVisible = inheritedVisible and layer.isVisible
         end
-        
+
         -- Append the layer and its effective visibility to the output arrays
         outLayers[#outLayers + 1] = layer
         outVis[#outVis + 1] = effectiveVisible
-        
+
         -- If this layer is a group, recursively flatten its children, passing down the effective visibilityStates
         if layer.isGroup then
             local nextInherited = ignoreGroupVisibility and true or effectiveVisible
@@ -120,13 +120,13 @@ originX, originY: the user-defined origin point for the exported Spine skeleton,
 roundCoordinatesToInteger: if true, rounds the attachment coordinates to the nearest integer instead of keeping decimals (not recommended for pixel art)
 ]]
 function captureLayers(
-    layers, 
-    sprite, 
-    effectiveVisibilities, 
-    outputPath, 
-    clearOldImages, 
-    originX, 
-    originY, 
+    layers,
+    sprite,
+    effectiveVisibilities,
+    outputPath,
+    clearOldImages,
+    originX,
+    originY,
     roundCoordinatesToInteger)
     -- Default output path to the sprite-name json in the sprite's directory.
     if (outputPath == nil or outputPath == "") then
@@ -365,7 +365,7 @@ function showExportOptionsDialog()
             clampOriginField("originY", 0)
         end
     })
-    
+
     -- button: Presets for common origin settings (center, bottom-center, bottom-left, top-left)
     local function setOriginPreset(x, y)
         optionsDialog:modify({ id = "originX", text = string.format("%.3f", x) })
@@ -406,7 +406,7 @@ function showExportOptionsDialog()
         selected = cachedOptions.roundCoordinatesToInteger
     })
     optionsDialog:separator({})
---#endregion
+    --#endregion
 
     --#region Output Path Settings
     -- entry: Output json path
@@ -450,7 +450,7 @@ function showExportOptionsDialog()
     })
     optionsDialog:separator({})
     --#endregion
-    
+
     --#region Execution Buttons
     -- button: Confirm export
     local confirmed = false
