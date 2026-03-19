@@ -92,7 +92,7 @@ ___
 * Create a new skeleton：如果选中，导入时会 创建一个新的骨架。
   * 如果已经创建了 空的新项目，则不需要选中该选项，直接导入即可。
 * Import into an existing skeleton：如果选中，导入的资源会被添加到 现有骨架中。
-  * Replace existing attachments：如果选中，导入时会 替换现有骨架中 同名的附件。
+  * Replace existing attachments：建议选中，以确保 附件被正确替换，更新 坐标和其他相关属性。
   * 新增的图层 会生成 新的附件 并添加到 现有的骨架中，但是 绘制顺序 可能会出现问题，需要在 Spine 中手动调整。
 * Import 按钮：使用当前配置 开始导入。
 * Cancel 按钮：关闭对话框并 取消导入。
