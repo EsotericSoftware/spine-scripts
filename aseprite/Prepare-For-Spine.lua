@@ -412,7 +412,6 @@ function showExportOptionsDialog()
     local spriteOutputName = app.fs.fileTitle(activeSprite.filename)
     local defaultOutputPath = spriteOutputDir .. app.fs.pathSeparator .. spriteOutputName .. ".json"
     local cachedOptions, configPath = loadCachedOptions(defaultOutputPath)
-    CURRENT_ORIGIN_MODE = cachedOptions.originMode
     
     -- Draw the Spine logo at the top.
     DrawSpineLogo(optionsDialog)
@@ -423,8 +422,7 @@ function showExportOptionsDialog()
         text = "Reset Config",
         onclick = function()
             setOriginMode(optionsDialog, ORIGIN_MODE.NORMALIZED)
-            optionsDialog:modify({ id = "originX", text = string.format("%.3f", 0.5) })
-            optionsDialog:modify({ id = "originY", text = string.format("%.3f", 0) })
+            setOriginPreset(optionsDialog, "bottom-center")
             optionsDialog:modify({ id = "imageScalePercent", text = string.format("%.3f", 100) })
             optionsDialog:modify({ id = "imageScaleSlider", value = IMAGE_SCALE_SLIDER_MAX / 10 })
             optionsDialog:modify({ id = "imagePaddingPx", text = string.format("%.0f", 1) })
@@ -448,13 +446,9 @@ function showExportOptionsDialog()
         text = "Set which position is used as the Spine origin (0,0). Range: [0,1]."
     })
     optionsDialog:newrow()
-    -- Get origin coordinates from the first [origin] marker layer if present.
-    local markerOriginX, markerOriginY = getOriginFromMarkerLayer(activeSprite, getOriginMode())
-    local markerOriginApplied = markerOriginX ~= nil and markerOriginY ~= nil
     -- label: Shows whether the origin was set from the [origin] marker layer.
     optionsDialog:label({
-        id = "originMarkerStatus",
-        text = markerOriginApplied and "✅ Origin set from [origin] marker layer." or "⚪ Origin not set from [origin] marker layer."
+        id = "originMarkerStatus"
     })
 
     -- radio: Option to choose between normalized coordinates (0-1) or pixel-based coordinates
@@ -465,7 +459,6 @@ function showExportOptionsDialog()
         selected = cachedOptions.originMode == ORIGIN_MODE.NORMALIZED,
         onclick = function()
             setOriginMode(optionsDialog, ORIGIN_MODE.NORMALIZED)
-            applyOriginMode(optionsDialog)
         end
     })
     optionsDialog:radio({
@@ -474,12 +467,9 @@ function showExportOptionsDialog()
         selected = cachedOptions.originMode == ORIGIN_MODE.PIXEL,
         onclick = function()
             setOriginMode(optionsDialog, ORIGIN_MODE.PIXEL)
-            applyOriginMode(optionsDialog)
         end
     })
-    -- Set the initial state of the origin mode radio buttons based on cached options.
-    setOriginMode(optionsDialog, cachedOptions.originMode)
-
+    
     -- number + slider: Coordinate origin X and Y.
     optionsDialog:number({
         id = "originX",
@@ -504,7 +494,7 @@ function showExportOptionsDialog()
         max = ORIGIN_SLIDER_STEPS,
         value = 0,
         onchange = function()
-            syncOriginSlidersToFields(optionsDialog, "x")
+            syncOriginSlidersToFields(optionsDialog)
         end
     })
     :slider({
@@ -513,10 +503,13 @@ function showExportOptionsDialog()
         max = ORIGIN_SLIDER_STEPS,
         value = 0,
         onchange = function()
-            syncOriginSlidersToFields(optionsDialog, "y")
+            syncOriginSlidersToFields(optionsDialog)
         end
     })
-    applyOriginMode(optionsDialog)
+    -- Set the initial state of the origin mode radio buttons based on cached options.
+    setOriginMode(optionsDialog, cachedOptions.originMode)
+    -- Set the initial state of the origin X and Y fields and sliders based on cached options.
+    setOriginXyValues(optionsDialog, cachedOptions.originX, cachedOptions.originY)
 
     -- button: Presets for common origin settings (center, bottom-center, bottom-left, top-left)
     optionsDialog:newrow()
@@ -549,7 +542,7 @@ function showExportOptionsDialog()
     -- check: Option to round attachment coordinates to integers instead of keeping decimals
     optionsDialog:check({
         id = "roundCoordinatesToInteger",
-        label = "Round Coordinates To Integer",
+        label = "Round To Integer",
         text = "Drop decimal pixels, May misalign pixels; not recommended for pixel art.",
         selected = cachedOptions.roundCoordinatesToInteger
     })
@@ -557,11 +550,16 @@ function showExportOptionsDialog()
     optionsDialog:separator({})
 
     -- Override origin values from the first [origin] marker layer if present.
+    local markerOriginX, markerOriginY = getOriginFromMarkerLayer(activeSprite, getOriginMode())
+    local markerOriginApplied = markerOriginX ~= nil and markerOriginY ~= nil
     if (markerOriginApplied) then
-        optionsDialog:modify({ id = "originX", text = string.format("%.3f", markerOriginX) })
-        optionsDialog:modify({ id = "originY", text = string.format("%.3f", markerOriginY) })
-        clampOriginXyFieldValue(optionsDialog)
+        setOriginXyValues(optionsDialog, markerOriginX, markerOriginY)
     end
+    -- Set the label to show whether the origin was set from the [origin] marker layer.
+    optionsDialog:modify({
+        id = "originMarkerStatus",
+        text = markerOriginApplied and "✅ Origin set from [origin] marker layer." or "⚪ Origin not set from [origin] marker layer."
+    })
     --#endregion
 
     --#region Image Settings
@@ -803,28 +801,9 @@ ORIGIN_MODE = {
     NORMALIZED = "Normalized", -- Normalized origin coordinates in the range [0,1], where (0,0) is the bottom-left.
     PIXEL = "Pixel", -- Pixel-based origin coordinates, where (0,0) is the bottom-left of the sprite and values are in pixels.
 }
-CURRENT_ORIGIN_MODE = ORIGIN_MODE.NORMALIZED
+CURRENT_ORIGIN_MODE = nil
 ORIGIN_SLIDER_STEPS = 100
 ORIGIN_SLIDER_IS_SYNCING = false
-
---[[
-Sets the selected origin mode radio button in the options dialog based on the given mode.
-optionsDialog: The export options dialog instance
-mode: The origin mode to select (ORIGIN_MODE.PIXEL or ORIGIN_MODE.NORMALIZED)
-]]
-function setOriginMode(optionsDialog, mode)
-    local currentMode = CURRENT_ORIGIN_MODE
-
-    if (currentMode ~= mode) then
-        convertOriginCoordinatesByMode(optionsDialog, mode)
-        optionsDialog:modify({ id = "originModeNormalized", selected = mode == ORIGIN_MODE.NORMALIZED })
-        optionsDialog:modify({ id = "originModePixel", selected = mode == ORIGIN_MODE.PIXEL })
-        CURRENT_ORIGIN_MODE = mode
-    else
-        optionsDialog:modify({ id = "originModeNormalized", selected = mode == ORIGIN_MODE.NORMALIZED })
-        optionsDialog:modify({ id = "originModePixel", selected = mode == ORIGIN_MODE.PIXEL })
-    end
-end
 
 --[[
 Gets the currently selected origin mode from the options dialog.
@@ -835,37 +814,26 @@ function getOriginMode()
 end
 
 --[[
-Applies the selected origin mode to the originX and originY fields.
+Sets the selected origin mode radio button in the options dialog based on the given mode.
 optionsDialog: The export options dialog instance
+mode: The origin mode to select (ORIGIN_MODE.PIXEL or ORIGIN_MODE.NORMALIZED)
 ]]
-function applyOriginMode(optionsDialog)
-    local spriteWidth, spriteHeight = getActiveSpriteSize()
-    local mode = getOriginMode()
-
-    local currentX = tonumber(optionsDialog.data.originX)
-    local currentY = tonumber(optionsDialog.data.originY)
-    if (mode == ORIGIN_MODE.PIXEL) then
-        if (currentX == nil) then
-            currentX = spriteWidth * 0.5
-        end
-        if (currentY == nil) then
-            currentY = 0
-        end
-    else
-        if (currentX == nil) then
-            currentX = 0.5
-        end
-        if (currentY == nil) then
-            currentY = 0
-        end
+function setOriginMode(optionsDialog, mode)
+    -- If the mode is the same as the current mode, no need to update.
+    if (CURRENT_ORIGIN_MODE == mode) then
+        return
     end
+    CURRENT_ORIGIN_MODE = mode
 
-    optionsDialog:modify({ id = "originX", text = tostring(currentX) })
-    optionsDialog:modify({ id = "originY", text = tostring(currentY) })
-    clampOriginXyFieldValue(optionsDialog)
+    -- Update the selected state of the origin mode radio buttons based on the given mode.
+    optionsDialog:modify({ id = "originModeNormalized", selected = mode == ORIGIN_MODE.NORMALIZED })
+    optionsDialog:modify({ id = "originModePixel", selected = mode == ORIGIN_MODE.PIXEL })
+    -- When the origin mode changes, convert the current originX and originY values to the new mode.
+    convertOriginCoordinatesByMode(optionsDialog, mode)
 
-    -- Update the coordinate settings label to show the valid input range for the selected origin mode
+    -- Update the coordinate settings label to show the valid input range for the selected origin mode.
     if (mode == ORIGIN_MODE.PIXEL) then
+        local spriteWidth, spriteHeight = getActiveSpriteSize()
         optionsDialog:modify({
             id = "coordinateSettings",
             text = string.format("Set Spine origin(0,0) in pixels. Range X:[0,%.0f], Y:[0,%.0f]", spriteWidth, spriteHeight)
@@ -876,6 +844,18 @@ function applyOriginMode(optionsDialog)
             text = "Set Spine origin(0,0) in normalized coordinates. Range: [0,1]"
         })
     end
+end
+
+--[[
+Set originX and originY field values.
+optionsDialog: The export options dialog instance
+x: The preset origin X value to set
+y: The preset origin Y value to set
+]]
+function setOriginXyValues(optionsDialog, x, y)
+    optionsDialog:modify({ id = "originX", text = string.format(x) })
+    optionsDialog:modify({ id = "originY", text = string.format(y) })
+    clampOriginXyFieldValue(optionsDialog)
 end
 
 --[[
@@ -916,8 +896,7 @@ function convertOriginCoordinatesByMode(optionsDialog, toMode)
         convertedY = originY / spriteHeight
     end
 
-    optionsDialog:modify({ id = "originX", text = tostring(convertedX) })
-    optionsDialog:modify({ id = "originY", text = tostring(convertedY) })
+    setOriginXyValues(optionsDialog, convertedX, convertedY)
 end
 
 --[[
@@ -995,9 +974,7 @@ function setOriginPreset(optionsDialog, presetName)
         end
     end
 
-    optionsDialog:modify({ id = "originX", text = string.format("%.3f", x) })
-    optionsDialog:modify({ id = "originY", text = string.format("%.3f", y) })
-    clampOriginXyFieldValue(optionsDialog)
+    setOriginXyValues(optionsDialog, x, y)
 end
 
 --[[
@@ -1088,7 +1065,7 @@ function syncOriginSlidersFromFields(optionsDialog)
 end
 
 -- Syncs the originX and originY input fields from the current slider positions.
-function syncOriginSlidersToFields(optionsDialog, axis)
+function syncOriginSlidersToFields(optionsDialog)
     if (ORIGIN_SLIDER_IS_SYNCING) then
         return
     end
@@ -1109,16 +1086,10 @@ function syncOriginSlidersToFields(optionsDialog, axis)
     local sliderY = tonumber(optionsDialog.data.originYSlider) or 0
 
     ORIGIN_SLIDER_IS_SYNCING = true
-    if (axis == "x") then
-        local x = fromOriginSliderValue(sliderX, maxX)
-        optionsDialog:modify({ id = "originX", text = string.format("%.3f", x) })
-    elseif (axis == "y") then
-        local y = fromOriginSliderValue(sliderY, maxY)
-        optionsDialog:modify({ id = "originY", text = string.format("%.3f", y) })
-    end
+    local x = fromOriginSliderValue(sliderX, maxX)
+    local y = fromOriginSliderValue(sliderY, maxY)
+    setOriginXyValues(optionsDialog, x, y)
     ORIGIN_SLIDER_IS_SYNCING = false
-
-    clampOriginXyFieldValue(optionsDialog)
 end
 
 -- Converts a coordinate value into slider step value based on current mode range.

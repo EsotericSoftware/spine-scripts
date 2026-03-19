@@ -10,7 +10,7 @@ ___
 
 ## Lua Script for importing Aseprite projects into Spine
 
-## v1.2
+## v1.3
 
 ### Installation
 
@@ -35,23 +35,42 @@ After following these steps, the "Prepare-For-Spine" script should show up in th
 
 * Reset Config Button: Resets all options to their default values.
   * This will also clear any cached settings, so the next time you open the options dialog it will be restored to the default values.
-* Origin (X/Y): Sets the coordinate origin for the exported images.
-  * This coordinate origin will align with the coordinate origin in Spine, affecting the default position of the images when imported into Spine.
-  * The origin coordinates are normalized to the range [0,1], where (0,0) represents the bottom-left corner of the image and (1,1) represents the top-right corner.
-  * There are also quick preset buttons for common origin configurations (Center, Bottom-Center, Bottom-Left, Top-Left) that will automatically set the X and Y values accordingly.
-* Round Coordinates to Integer: When enabled, the script will round all coordinate values to the nearest integer, dropping any decimal part.
-  * This may cause pixel misalignment. For example, if the origin is set to center and the image has odd pixel dimensions, the true center lies at the center of the middle pixel rather than on an edge. Forcing integer coordinates can therefore introduce a half-pixel offset.
-  * Pixel art usually requires perfect pixel alignment, so this option is not recommended unless you have a specific need.
-* Output Path: Allows you to specify a custom output path for the exported JSON file.
-  * By default, it will be saved in the same directory as your Aseprite project file.
-  * You can type a path directly into the text field, or click the button below to open a file picker dialog. After selecting a location, the path is filled into the text field automatically.
-* Ignore Group Visibility: When enabled, the script will ignore the visibility of groups during export.
-  * This only considers each layer's own visibility and ignores the visibility of its parent group. That means a layer can still be exported even if its group is hidden, as long as the layer itself is visible.
-* Clear Old Images: When enabled, the script will automatically delete any previously exported images in the output directory before exporting new ones.
-  * This helps to prevent confusion and clutter from old files that are no longer relevant to the current export.
-* Export Button: Starts the export process with the configured options.
-  * After export completes, click the [Open File Folder] button to open the directory containing the exported files.
-* Cancel Button: Closes the options dialog without exporting.
+
+* Coordinate Settings: Configure the coordinate origin used for exported images in Spine.
+  * Origin Mode: Sets how the origin is interpreted, with two modes: Normalized and Pixel.
+    * Normalized mode: Origin (X/Y) values are normalized to the [0,1] range.
+    * Pixel mode: Origin (X/Y) values represent exact pixel coordinates.
+  * [origin] tag import: If a layer name contains [origin], that layer is used as an automatic source for origin coordinates.
+    * The center point of that layer is converted to Origin (X, Y) in the export settings.
+    * Import success/failure is shown with an icon and status text.
+  * Origin (X/Y): Sets the coordinate origin for the exported images.
+    * This coordinate origin will align with the coordinate origin in Spine, affecting the default position of the images when imported into Spine.
+    * (0,0) represents the bottom-left corner of the image, and (1,1) or (image width, image height) represents the top-right corner.
+    * Sliders below the input fields let you quickly adjust X and Y for more intuitive origin placement.
+    * There are also quick preset buttons for common origin configurations (Center, Bottom-Center, Bottom-Left, Top-Left) that will automatically set the X and Y values accordingly.
+  * Round to Integer: When enabled, the script will round all coordinate values to the nearest integer, dropping any decimal part.
+    * This may cause pixel misalignment. For example, if the origin is set to center and the image has odd pixel dimensions, the true center lies at the center of the middle pixel rather than on an edge. Forcing integer coordinates can therefore introduce a half-pixel offset.
+    * Pixel art usually requires perfect pixel alignment, so this option is not recommended unless you have a specific need.
+
+* Image Settings: Control export image scale and padding.
+  * Scale(%): Adjusts exported image resolution as a percentage. The default is 100%, which means no scaling.
+    * Pixel art often appears too small on screen after export; increasing the scale can improve display size.
+  * Padding(px): Defines transparent pixel padding around image edges. The default is 1, meaning 1 pixel of edge padding.
+    * This can avoid aliasing artifacts for opaque pixels along the image edge.
+
+* Output Settings: Configure output paths for JSON and images, plus export behavior options.
+  * Output Path: Allows you to specify a custom output path for the exported JSON file.
+    * By default, it will be saved in the same directory as your Aseprite project file.
+    * You can type a path directly into the text field, or click the button below to open a file picker dialog. After selecting a location, the path is filled into the text field automatically.
+  * Ignore Hidden Layers: When enabled, the script ignores layer visibility during export.
+    * Layers are still exported even if the layer itself or its parent group is hidden.
+  * Clear Old Images: When enabled, the script will automatically delete any previously exported images in the output directory before exporting new ones.
+    * This helps to prevent confusion and clutter from old files that are no longer relevant to the current export.
+
+* Action Buttons: Start export using the current configuration.
+  * Export Button: Starts the export process with the configured options.
+    * After export completes, click the [Open File Folder] button to open the directory containing the exported files.
+  * Cancel Button: Closes the options dialog without exporting.
 
 #### 「Spine Import」
 
@@ -80,18 +99,28 @@ After following these steps, the "Prepare-For-Spine" script should show up in th
 
 ### Known Issues
 
-#### v1.2
-
 * Opening the exported file location currently relies on `os` library APIs and may cause a brief UI stall (a few seconds).
 * Deleting old `images` files also relies on `os` library APIs and may cause a brief UI stall.
 * New layers added in Aseprite may have incorrect draw order when imported into an existing Spine skeleton, and need to be adjusted manually in Spine.
 
-#### v1.1
-
-* Hiding a group of layers will not exclude it from the export.  Each layer needs to be shown or hidden individually (group visibility is ignored)
-* Not as many options as the Photshop script.  Maybe I'll add these in the future but honestly i've never used any of them so we will see.
-
 ### Version History
+
+#### v1.3
+
+* Add coordinate modes and refine layer visibility options
+  * Added Normalized [0,1] and Pixel modes for origin coordinates.
+  * Added Sliders for Origin (X, Y) to allow more intuitive control.
+  * Added "Ignore Hidden Layers" toggle for more flexible exports.
+  * Removed redundant "Use layer visibility only" option.
+
+* Add Image Settings for scale and padding control
+  * Added Image Scale option to adjust the resolution of exported images.
+  * Added Image Padding setting to define pixel padding around image borders.
+
+* Support [origin] layer, add Spine logo, and refine UI layout
+  * Layers with [origin] in their name will be automatically configured as the origin coordinates in the export settings.
+  * Added Spine Logo to the dialog header for better branding/recognition.
+  * Refined UI Layout, Optimized spacing and alignment of all control panels for a cleaner look.
 
 #### v1.2
 
