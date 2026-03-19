@@ -117,6 +117,8 @@ outputPath: the output json file path
 clearOldImages: if true, clear existing images folder before export
 originX, originY: the user-defined origin point for the exported Spine skeleton, as a percentage of the sprite's width and height (range 0-1)
 roundCoordinatesToInteger: if true, rounds the attachment coordinates to the nearest integer instead of keeping decimals (not recommended for pixel art)
+imageScalePercent: the scale percentage to apply to exported image resolution
+imagePaddingPx: the padding to apply around each captured image, in pixels
 ]]
 function captureLayers(
     layers, 
@@ -126,7 +128,9 @@ function captureLayers(
     clearOldImages, 
     originX, 
     originY, 
-    roundCoordinatesToInteger)
+    roundCoordinatesToInteger,
+    imageScalePercent,
+    imagePaddingPx)
     -- Default output path to the sprite-name json in the sprite's directory.
     if (outputPath == nil or outputPath == "") then
         local defaultOutputDir = app.fs.filePath(sprite.filename)
@@ -186,6 +190,7 @@ function captureLayers(
     local slotsJson = {}
     local skinsJson = {}
     local index = 1
+    local scaleFactor = imageScalePercent / 100 -- convert from percentage to a multiplier (e.g. 100% -> 1, 50% -> 0.5, 200% -> 2)
     for i, layer in ipairs(layers) do
         -- Ignore groups and non-visible layers
         if (not layer.isGroup and effectiveVisibilities[i] == true) then
@@ -196,7 +201,18 @@ function captureLayers(
             local savedOk = false
             savedOk = pcall(function()
                 local cropped = Sprite(sprite)
-                cropped:crop(cel.position.x, cel.position.y, cel.bounds.width, cel.bounds.height)
+                local cropX = cel.position.x - imagePaddingPx
+                local cropY = cel.position.y - imagePaddingPx
+                local cropWidth = cel.bounds.width + imagePaddingPx * 2
+                local cropHeight = cel.bounds.height + imagePaddingPx * 2
+                cropped:crop(cropX, cropY, cropWidth, cropHeight)
+
+                local scaledWidth = math.max(1, math.floor(cropWidth * scaleFactor + 0.5))
+                local scaledHeight = math.max(1, math.floor(cropHeight * scaleFactor + 0.5))
+                if (scaledWidth ~= cropWidth or scaledHeight ~= cropHeight) then
+                    cropped:resize(scaledWidth, scaledHeight)
+                end
+
                 cropped:saveCopyAs(imagePath)
                 cropped:close()
             end)
@@ -208,6 +224,8 @@ function captureLayers(
             -- Calculate the attachment position based on the cel position, cel bounds, sprite bounds, and the user-defined originX and originY.
             local attachmentX = cel.bounds.width / 2 + cel.position.x - sprite.bounds.width * originX
             local attachmentY = sprite.bounds.height * (1 - originY) - cel.position.y - cel.bounds.height / 2
+            attachmentX = attachmentX * scaleFactor
+            attachmentY = attachmentY * scaleFactor
             slotsJson[index] = string.format([[ { "name": "%s", "bone": "%s", "attachment": "%s" } ]], name, "root", name)
             -- If roundCoordinatesToInteger is true, round the attachmentX and attachmentY to the nearest integer using math.modf.  Otherwise, keep the decimal values with 3 decimal places.
             if (roundCoordinatesToInteger == true) then
@@ -314,6 +332,10 @@ function showExportOptionsDialog()
             setOriginMode(optionsDialog, ORIGIN_MODE.NORMALIZED)
             optionsDialog:modify({ id = "originX", text = string.format("%.3f", 0.5) })
             optionsDialog:modify({ id = "originY", text = string.format("%.3f", 0) })
+            optionsDialog:modify({ id = "imageScalePercent", text = string.format("%.3f", 100) })
+            optionsDialog:modify({ id = "imageScaleSlider", value = IMAGE_SCALE_SLIDER_MAX / 10 })
+            optionsDialog:modify({ id = "imagePaddingPx", text = string.format("%.0f", 1) })
+            optionsDialog:modify({ id = "imagePaddingSlider", value = 1 })
             optionsDialog:modify({ id = "roundCoordinatesToInteger", selected = false })
             optionsDialog:modify({ id = "outputPath", text = defaultOutputPath })
             optionsDialog:modify({ id = "ignoreHiddenLayers", selected = true })
@@ -325,7 +347,6 @@ function showExportOptionsDialog()
     --#endregion
 
     --#region Coordinate Settings
-
     optionsDialog:label({
         id = "coordinateSettings",
         label = "Coordinate Settings",
@@ -376,7 +397,7 @@ function showExportOptionsDialog()
         max = ORIGIN_SLIDER_STEPS,
         value = 0,
         onchange = function()
-            applyOriginSliderChange(optionsDialog, "x")
+            syncOriginSlidersToFields(optionsDialog, "x")
         end
     })
     :slider({
@@ -385,7 +406,7 @@ function showExportOptionsDialog()
         max = ORIGIN_SLIDER_STEPS,
         value = 0,
         onchange = function()
-            applyOriginSliderChange(optionsDialog, "y")
+            syncOriginSlidersToFields(optionsDialog, "y")
         end
     })
     applyOriginMode(optionsDialog)
@@ -425,9 +446,80 @@ function showExportOptionsDialog()
         text = "Drop decimal pixels, May misalign pixels; not recommended for pixel art.",
         selected = cachedOptions.roundCoordinatesToInteger
     })
-    optionsDialog:separator({})
---#endregion
 
+    optionsDialog:separator({})
+    --#endregion
+
+    --#region Image Settings
+    optionsDialog:label({
+        id = "imageSettings",
+        label = "Image Settings",
+        text = "Configure output image transform settings."
+    })
+
+    -- number + slider: Image scale as a percentage, where 100% means the same size as the original sprite.
+    optionsDialog:number({
+        id = "imageScalePercent",
+        label = "Scale (%)",
+        text = string.format("%.3f", cachedOptions.imageScalePercent),
+        decimals = 3,
+        onchange = function()
+            clampImageScaleFieldValue(optionsDialog)
+        end
+    })
+    :slider({
+        id = "imageScaleSlider",
+        min = 0,
+        max = IMAGE_SCALE_SLIDER_MAX,
+        onchange = function()
+            syncImageScaleSliderToField(optionsDialog)
+        end
+    })
+    syncImageScaleSliderFromField(optionsDialog)
+    optionsDialog:newrow()
+
+    -- number + slider: Image padding in pixels.
+    optionsDialog:number({
+        id = "imagePaddingPx",
+        label = "Padding (px)",
+        text = string.format("%.0f", cachedOptions.imagePaddingPx),
+        decimals = 0,
+        onchange = function()
+            clampImagePaddingFieldValue(optionsDialog)
+        end
+    })
+    :slider({
+        id = "imagePaddingSlider",
+        min = 0,
+        max = IMAGE_PADDING_SLIDER_MAX,
+        onchange = function()
+            syncImagePaddingSliderToField(optionsDialog)
+        end
+    })
+    syncImagePaddingSliderFromField(optionsDialog)
+
+    optionsDialog:separator({})
+    --#endregion
+
+    --#region Other Settings
+    -- check: Option to skip exporting hidden layers (including layers under hidden groups)
+    optionsDialog:check({
+        id = "ignoreHiddenLayers",
+        label = "Ignore Hidden Layers",
+        text = "Hidden layers and layers under hidden groups will not be output.",
+        selected = cachedOptions.ignoreHiddenLayers
+    })
+
+    -- check: Option to clear old images in the output images directory before export
+    optionsDialog:check({
+        id = "clearOldImages",
+        label = "Clear Old Images",
+        text = "Delete existing images first, including leftovers from removed layers.",
+        selected = cachedOptions.clearOldImages
+    })
+    optionsDialog:separator({})
+    --#endregion
+    
     --#region Output Path Settings
     -- entry: Output json path
     optionsDialog:entry({
@@ -452,25 +544,6 @@ function showExportOptionsDialog()
     optionsDialog:separator({})
     --#endregion
 
-    --#region Other Settings
-    -- check: Option to skip exporting hidden layers (including layers under hidden groups)
-    optionsDialog:check({
-        id = "ignoreHiddenLayers",
-        label = "Ignore Hidden Layers",
-        text = "Hidden layers and layers under hidden groups will not be output.",
-        selected = cachedOptions.ignoreHiddenLayers
-    })
-
-    -- check: Option to clear old images in the output images directory before export
-    optionsDialog:check({
-        id = "clearOldImages",
-        label = "Clear Old Images",
-        text = "Delete existing images first.",
-        selected = cachedOptions.clearOldImages
-    })
-    optionsDialog:separator({})
-    --#endregion
-    
     --#region Execution Buttons
     -- button: Confirm export
     local confirmed = false
@@ -503,7 +576,7 @@ function showExportOptionsDialog()
     if (options.outputPath == nil or options.outputPath == "") then
         options.outputPath = defaultOutputPath
     end
-    -- Parse originX and originY as numbers, and fallback to defaults if parsing fails or values are out of range
+    -- Parse originX and originY as numbers, and fallback to defaults if parsing fails or values are out of range.
     if (options.originMode ~= ORIGIN_MODE.PIXEL and options.originMode ~= ORIGIN_MODE.NORMALIZED) then
         options.originMode = ORIGIN_MODE.NORMALIZED
     end
@@ -516,6 +589,12 @@ function showExportOptionsDialog()
         options.originX = clampValue(parsedOriginX or 0.5, 0, 1)
         options.originY = clampValue(parsedOriginY or 0, 0, 1)
     end
+    -- Parse imageScalePercent as a number, and fallback to default if parsing fails or value is out of range.
+    local parsedImageScalePercent = tonumber(options.imageScalePercent)
+    options.imageScalePercent = clampValue(parsedImageScalePercent or 100, 0, IMAGE_SCALE_VALUE_MAX)
+    -- Parse imagePaddingPx as a number, and fallback to default if parsing fails or value is out of range.
+    local parsedImagePaddingPx = tonumber(options.imagePaddingPx)
+    options.imagePaddingPx = clampValue(math.floor((parsedImagePaddingPx or 1) + 0.5), 0, IMAGE_PADDING_INPUT_MAX)
 
     -- Save the options to cache so they will be remembered next time the dialog is opened.
     saveCachedOptions(configPath, options)
@@ -531,8 +610,8 @@ end
 
 --[[
 Shows export completion dialog with action to open the exported file location.
-jsonFileName: The exported json file path
-failedPaths: The list of file/directory paths that failed to write
+jsonFileName: The exported json file path.
+failedPaths: The list of file/directory paths that failed to write.
 ]]
 function showExportCompletedDialog(jsonFileName, failedPaths)
     local completedDialog = Dialog({ title = "Export Completed" })
@@ -553,7 +632,7 @@ function showExportCompletedDialog(jsonFileName, failedPaths)
         completedDialog:label({
             text = "Failed to write:"
         })
-        -- List each failed path
+        -- List each failed path.
         for _, path in ipairs(failedPaths) do
             completedDialog:newrow()
             completedDialog:label({
@@ -563,7 +642,7 @@ function showExportCompletedDialog(jsonFileName, failedPaths)
     end
 
     completedDialog:newrow()
-    -- Button to open the file location in the OS file explorer
+    -- Button to open the file location in the OS file explorer.
     completedDialog:button({
         text = "Open File Folder",
         onclick = function()
@@ -571,7 +650,7 @@ function showExportCompletedDialog(jsonFileName, failedPaths)
             completedDialog:close()
         end
     })
-    -- Button to close the dialog
+    -- Button to close the dialog.
     completedDialog:button({
         text = "OK",
         focus = true,
@@ -583,7 +662,7 @@ function showExportCompletedDialog(jsonFileName, failedPaths)
     completedDialog:show({ wait = true })
 end
 
---#region Coordinates Origin Mode Functions
+--#region Coordinates Settings Functions
 ORIGIN_MODE = {
     NORMALIZED = "Normalized", -- Normalized origin coordinates in the range [0,1], where (0,0) is the bottom-left.
     PIXEL = "Pixel", -- Pixel-based origin coordinates, where (0,0) is the bottom-left of the sprite and values are in pixels.
@@ -730,6 +809,8 @@ function clampOriginXyFieldValue(optionsDialog)
     local clampedY = clampValue(parsedY, 0, maxY)
     optionsDialog:modify({ id = "originX", text = string.format("%.3f", clampedX) })
     optionsDialog:modify({ id = "originY", text = string.format("%.3f", clampedY) })
+
+    -- After clamping the field values, also update the slider positions to match the clamped values.
     syncOriginSlidersFromFields(optionsDialog)
 end
 
@@ -837,25 +918,6 @@ end
 
 --#region Origin Coordinate Sliders Functions
 
--- Converts a coordinate value into slider step value based on current mode range.
-function toOriginSliderValue(value, maxValue)
-    if (maxValue == nil or maxValue <= 0) then
-        maxValue = 1
-    end
-    local normalized = clampValue((value or 0) / maxValue, 0, 1)
-    return math.floor(normalized * ORIGIN_SLIDER_STEPS + 0.5)
-end
-
--- Converts a slider step value back into coordinate value based on current mode range.
-function fromOriginSliderValue(sliderValue, maxValue)
-    if (maxValue == nil or maxValue <= 0) then
-        maxValue = 1
-    end
-    local step = clampValue(sliderValue or 0, 0, ORIGIN_SLIDER_STEPS)
-    local normalized = step / ORIGIN_SLIDER_STEPS
-    return normalized * maxValue
-end
-
 -- Syncs the slider positions from current originX/originY input values.
 function syncOriginSlidersFromFields(optionsDialog)
     if (ORIGIN_SLIDER_IS_SYNCING) then
@@ -889,8 +951,8 @@ function syncOriginSlidersFromFields(optionsDialog)
     ORIGIN_SLIDER_IS_SYNCING = false
 end
 
--- Applies slider movement back to originX/originY inputs.
-function applyOriginSliderChange(optionsDialog, axis)
+-- Syncs the originX and originY input fields from the current slider positions.
+function syncOriginSlidersToFields(optionsDialog, axis)
     if (ORIGIN_SLIDER_IS_SYNCING) then
         return
     end
@@ -922,6 +984,126 @@ function applyOriginSliderChange(optionsDialog, axis)
 
     clampOriginXyFieldValue(optionsDialog)
 end
+
+-- Converts a coordinate value into slider step value based on current mode range.
+function toOriginSliderValue(value, maxValue)
+    if (maxValue == nil or maxValue <= 0) then
+        maxValue = 1
+    end
+    local normalized = clampValue((value or 0) / maxValue, 0, 1)
+    return math.floor(normalized * ORIGIN_SLIDER_STEPS + 0.5)
+end
+
+-- Converts a slider step value back into coordinate value based on current mode range.
+function fromOriginSliderValue(sliderValue, maxValue)
+    if (maxValue == nil or maxValue <= 0) then
+        maxValue = 1
+    end
+    local step = clampValue(sliderValue or 0, 0, ORIGIN_SLIDER_STEPS)
+    local normalized = step / ORIGIN_SLIDER_STEPS
+    return normalized * maxValue
+end
+--#endregion
+--#endregion
+
+--#region Image Settings Functions
+IMAGE_SCALE_SLIDER_MAX = 1000
+IMAGE_SCALE_SLIDER_IS_SYNCING = false
+IMAGE_SCALE_VALUE_MAX = 10000
+IMAGE_PADDING_SLIDER_MAX = 4
+IMAGE_PADDING_IS_SYNCING = false
+IMAGE_PADDING_INPUT_MAX = 100
+
+--#region Image Scale Slider Functions
+
+-- Clamps the image scale input to a minimum of 0 and updates the slider state.
+function clampImageScaleFieldValue(optionsDialog)
+    local parsedScale = tonumber(optionsDialog.data.imageScalePercent)
+    if (parsedScale == nil) then
+        parsedScale = 100
+    end
+    local clampedScale = clampValue(parsedScale, 0, IMAGE_SCALE_VALUE_MAX)
+    optionsDialog:modify({ id = "imageScalePercent", text = string.format("%.3f", clampedScale) })
+    syncImageScaleSliderFromField(optionsDialog)
+end
+
+-- Syncs slider value from the scale input field; input above slider max keeps slider at max.
+function syncImageScaleSliderFromField(optionsDialog)
+    if (IMAGE_SCALE_SLIDER_IS_SYNCING) then
+        return
+    end
+
+    local parsedScale = tonumber(optionsDialog.data.imageScalePercent)
+    if (parsedScale == nil) then
+        parsedScale = 100
+    end
+    local clampedScale = clampValue(parsedScale, 0, IMAGE_SCALE_VALUE_MAX)
+    local sliderValue = clampValue(math.floor(clampedScale + 0.5), 0, IMAGE_SCALE_SLIDER_MAX)
+
+    IMAGE_SCALE_SLIDER_IS_SYNCING = true
+    optionsDialog:modify({ id = "imageScaleSlider", value = sliderValue })
+    IMAGE_SCALE_SLIDER_IS_SYNCING = false
+end
+
+-- Syncs the scale input field from the slider value.
+function syncImageScaleSliderToField(optionsDialog)
+    if (IMAGE_SCALE_SLIDER_IS_SYNCING) then
+        return
+    end
+
+    local sliderValue = tonumber(optionsDialog.data.imageScaleSlider) or 0
+    sliderValue = clampValue(sliderValue, 0, IMAGE_SCALE_SLIDER_MAX)
+
+    IMAGE_SCALE_SLIDER_IS_SYNCING = true
+    optionsDialog:modify({ id = "imageScalePercent", text = string.format("%.3f", sliderValue) })
+    IMAGE_SCALE_SLIDER_IS_SYNCING = false
+end
+--#endregion
+
+--#region Image Padding Slider Functions
+
+-- Clamps the image padding input to [0,100] and updates the slider state.
+function clampImagePaddingFieldValue(optionsDialog)
+    local parsedPadding = tonumber(optionsDialog.data.imagePaddingPx)
+    if (parsedPadding == nil) then
+        parsedPadding = 0
+    end
+    local clampedPadding = clampValue(math.floor(parsedPadding + 0.5), 0, IMAGE_PADDING_INPUT_MAX)
+    optionsDialog:modify({ id = "imagePaddingPx", text = string.format("%.0f", clampedPadding) })
+    syncImagePaddingSliderFromField(optionsDialog)
+end
+
+-- Syncs padding slider value from the input field; input above slider max keeps slider at max.
+function syncImagePaddingSliderFromField(optionsDialog)
+    if (IMAGE_PADDING_IS_SYNCING) then
+        return
+    end
+
+    local parsedPadding = tonumber(optionsDialog.data.imagePaddingPx)
+    if (parsedPadding == nil) then
+        parsedPadding = 0
+    end
+    local clampedPadding = clampValue(math.floor(parsedPadding + 0.5), 0, IMAGE_PADDING_INPUT_MAX)
+    local sliderValue = clampValue(clampedPadding, 0, IMAGE_PADDING_SLIDER_MAX)
+
+    IMAGE_PADDING_IS_SYNCING = true
+    optionsDialog:modify({ id = "imagePaddingSlider", value = sliderValue })
+    IMAGE_PADDING_IS_SYNCING = false
+end
+
+-- Syncs the padding input field from the slider value.
+function syncImagePaddingSliderToField(optionsDialog)
+    if (IMAGE_PADDING_IS_SYNCING) then
+        return
+    end
+
+    local sliderValue = tonumber(optionsDialog.data.imagePaddingSlider) or 0
+    sliderValue = clampValue(math.floor(sliderValue + 0.5), 0, IMAGE_PADDING_SLIDER_MAX)
+
+    IMAGE_PADDING_IS_SYNCING = true
+    optionsDialog:modify({ id = "imagePaddingPx", text = string.format("%.0f", sliderValue) })
+    IMAGE_PADDING_IS_SYNCING = false
+end
 --#endregion
 --#endregion
 
@@ -949,6 +1131,8 @@ function loadCachedOptions(defaultOutputPath)
     local cached = {
         originX = 0.5,
         originY = 0,
+        imageScalePercent = 100,
+        imagePaddingPx = 1,
         originMode = ORIGIN_MODE.NORMALIZED,
         roundCoordinatesToInteger = false,
         outputPath = defaultOutputPath,
@@ -975,6 +1159,8 @@ function loadCachedOptions(defaultOutputPath)
 
     cached.originX = tonumber(raw.originX) or cached.originX
     cached.originY = tonumber(raw.originY) or cached.originY
+    cached.imageScalePercent = clampValue(tonumber(raw.imageScalePercent) or cached.imageScalePercent, 0, IMAGE_SCALE_VALUE_MAX)
+    cached.imagePaddingPx = clampValue(math.floor((tonumber(raw.imagePaddingPx) or cached.imagePaddingPx) + 0.5), 0, IMAGE_PADDING_INPUT_MAX)
     if (raw.originMode == ORIGIN_MODE.PIXEL or raw.originMode == ORIGIN_MODE.NORMALIZED) then
         cached.originMode = raw.originMode
     end
@@ -1001,6 +1187,8 @@ function saveCachedOptions(configPath, options)
 
     configFile:write("originX=" .. string.format("%.3f", options.originX) .. "\n")
     configFile:write("originY=" .. string.format("%.3f", options.originY) .. "\n")
+    configFile:write("imageScalePercent=" .. string.format("%.3f", options.imageScalePercent or 100) .. "\n")
+    configFile:write("imagePaddingPx=" .. string.format("%.0f", options.imagePaddingPx or 0) .. "\n")
     configFile:write("originMode=" .. (options.originMode or ORIGIN_MODE.NORMALIZED) .. "\n")
     configFile:write("roundCoordinatesToInteger=" .. tostring(options.roundCoordinatesToInteger == true) .. "\n")
     configFile:write("outputPath=" .. (options.outputPath or "") .. "\n")
@@ -1055,7 +1243,9 @@ captureLayers(
     options.clearOldImages,
     normalizedOriginX,
     normalizedOriginY,
-    options.roundCoordinatesToInteger
+    options.roundCoordinatesToInteger,
+    options.imageScalePercent,
+    options.imagePaddingPx
 )
 
 -- Restore the layer's visibilities to how they were before
