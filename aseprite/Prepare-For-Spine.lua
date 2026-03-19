@@ -43,7 +43,7 @@ function containsDuplicates(layers, visibilities)
     local duplicateNames = {} -- List of layer duplicates names
     -- Iterate through the layers and count the occurrences of each name among visible layers
     for i, layer in ipairs(layers) do
-        if (not layer.isGroup and visibilities[i] == true) then
+        if (not layer.isGroup and visibilities[i] == true and not isMarkerLayer(layer)) then
             local name = layer.name
             local count = (nameCounts[name] or 0) + 1
             nameCounts[name] = count
@@ -193,7 +193,7 @@ function captureLayers(
     local scaleFactor = imageScalePercent / 100 -- convert from percentage to a multiplier (e.g. 100% -> 1, 50% -> 0.5, 200% -> 2)
     for i, layer in ipairs(layers) do
         -- Ignore groups and non-visible layers
-        if (not layer.isGroup and effectiveVisibilities[i] == true) then
+        if (not layer.isGroup and effectiveVisibilities[i] == true and not isMarkerLayer(layer)) then
             -- Set the layer to visible so we can capture it, then set it back to hidden after
             layer.isVisible = true
             local cel = layer.cels[1]
@@ -306,6 +306,96 @@ function openFileLocation(filePath)
     end
 end
 
+--#region Layer Marker Functions
+
+--[[
+Finds the first non-group layer whose name contains [] marker text by recursive layer order.
+parent: The sprite or parent layer group
+markerName: Marker text name to match inside [] (case-insensitive)
+]]
+function findFirstMarkerLayer(parent, markerName)
+    for _, layer in ipairs(parent.layers) do
+        if (isMarkerLayer(layer)) then
+            if (markerName == nil or markerName == "" or hasMarkerName(layer.name, markerName)) then
+                return layer
+            end
+        end
+        if (layer.isGroup) then
+            local found = findFirstMarkerLayer(layer, markerName)
+            if (found ~= nil) then
+                return found
+            end
+        end
+    end
+    return nil
+end
+
+--[[
+Returns true when a layer is a non-group marker layer.
+layer: the layer to check
+]]
+function isMarkerLayer(layer)
+    if (layer == nil or layer.isGroup) then
+        return false
+    end
+    
+    if (layer.name == nil) then
+        return false
+    end
+
+    return string.find(layer.name, "%b[]") ~= nil
+end
+
+--[[
+Returns true when layerName contains the exact marker text inside [] (case-insensitive).
+layerName: the layer name to check for the marker text
+markerName: the marker text to match inside [] (case-insensitive)
+]]
+function hasMarkerName(layerName, markerName)
+    if (layerName == nil or markerName == nil or markerName == "") then
+        return false
+    end
+
+    local escapedMarker = string.gsub(string.lower(markerName), "([%^%$%(%)%%%.%[%]%*%+%-%?])", "%%%1")
+    local markerPattern = "%[" .. escapedMarker .. "%]"
+    return string.find(string.lower(layerName), markerPattern) ~= nil
+end
+
+--[[
+Gets marker-center coordinates as origin values in the requested mode.
+sprite: the sprite to search for marker layers
+mode: the origin mode to return values in (ORIGIN_MODE.PIXEL or ORIGIN_MODE.NORMALIZED)
+]]
+function getOriginFromMarkerLayer(sprite, mode)
+    if (sprite == nil) then
+        return nil, nil
+    end
+    -- Find the first non-group layer whose name contains [origin] by recursive layer order.
+    local markerLayer = findFirstMarkerLayer(sprite, "origin")
+    if (markerLayer == nil or markerLayer.cels == nil or #markerLayer.cels == 0) then
+        return nil, nil
+    end
+    -- Calculate the center of the cel bounds as the marker position, and convert to the requested mode.
+    local cel = markerLayer.cels[1]
+    if (cel == nil or cel.bounds == nil or cel.position == nil) then
+        return nil, nil
+    end
+    local spriteWidth, spriteHeight = getActiveSpriteSize()
+    local centerX = cel.bounds.x + cel.bounds.width * 0.5
+    local centerYFromTop = cel.bounds.y + cel.bounds.height * 0.5
+    local pixelYFromBottom = spriteHeight - centerYFromTop
+
+    -- Clamp the returned values to valid ranges for the selected mode, in case the marker layer is placed outside the sprite bounds.
+    if (mode == ORIGIN_MODE.PIXEL) then
+        return clampValue(centerX, 0, spriteWidth), clampValue(pixelYFromBottom, 0, spriteHeight)
+    elseif (mode == ORIGIN_MODE.NORMALIZED) then
+        return clampValue(centerX / spriteWidth, 0, 1), clampValue(pixelYFromBottom / spriteHeight, 0, 1)
+    end
+
+    return nil, nil
+end
+--#endregion
+
 
 -----------------------------------------------[[ UI Functions ]]-----------------------------------------------
 --[[
@@ -323,6 +413,9 @@ function showExportOptionsDialog()
     local defaultOutputPath = spriteOutputDir .. app.fs.pathSeparator .. spriteOutputName .. ".json"
     local cachedOptions, configPath = loadCachedOptions(defaultOutputPath)
     CURRENT_ORIGIN_MODE = cachedOptions.originMode
+    
+    -- Draw the Spine logo at the top.
+    DrawSpineLogo(optionsDialog)
 
     --#region Other Buttons
     -- button: Resets all options to their default values
@@ -340,6 +433,8 @@ function showExportOptionsDialog()
             optionsDialog:modify({ id = "outputPath", text = defaultOutputPath })
             optionsDialog:modify({ id = "ignoreHiddenLayers", selected = true })
             optionsDialog:modify({ id = "clearOldImages", selected = false })
+            optionsDialog:repaint()
+            app:refresh()
         end
     })
 
@@ -352,6 +447,16 @@ function showExportOptionsDialog()
         label = "Coordinate Settings",
         text = "Set which position is used as the Spine origin (0,0). Range: [0,1]."
     })
+    optionsDialog:newrow()
+    -- Get origin coordinates from the first [origin] marker layer if present.
+    local markerOriginX, markerOriginY = getOriginFromMarkerLayer(activeSprite, getOriginMode())
+    local markerOriginApplied = markerOriginX ~= nil and markerOriginY ~= nil
+    -- label: Shows whether the origin was set from the [origin] marker layer.
+    optionsDialog:label({
+        id = "originMarkerStatus",
+        text = markerOriginApplied and "✅ Origin set from [origin] marker layer." or "⚪ Origin not set from [origin] marker layer."
+    })
+
     -- radio: Option to choose between normalized coordinates (0-1) or pixel-based coordinates
     optionsDialog:radio({
         id = "originModeNormalized",
@@ -372,7 +477,9 @@ function showExportOptionsDialog()
             applyOriginMode(optionsDialog)
         end
     })
+    -- Set the initial state of the origin mode radio buttons based on cached options.
     setOriginMode(optionsDialog, cachedOptions.originMode)
+
     -- number + slider: Coordinate origin X and Y.
     optionsDialog:number({
         id = "originX",
@@ -448,6 +555,13 @@ function showExportOptionsDialog()
     })
 
     optionsDialog:separator({})
+
+    -- Override origin values from the first [origin] marker layer if present.
+    if (markerOriginApplied) then
+        optionsDialog:modify({ id = "originX", text = string.format("%.3f", markerOriginX) })
+        optionsDialog:modify({ id = "originY", text = string.format("%.3f", markerOriginY) })
+        clampOriginXyFieldValue(optionsDialog)
+    end
     --#endregion
 
     --#region Image Settings
@@ -501,26 +615,12 @@ function showExportOptionsDialog()
     optionsDialog:separator({})
     --#endregion
 
-    --#region Other Settings
-    -- check: Option to skip exporting hidden layers (including layers under hidden groups)
-    optionsDialog:check({
-        id = "ignoreHiddenLayers",
-        label = "Ignore Hidden Layers",
-        text = "Hidden layers and layers under hidden groups will not be output.",
-        selected = cachedOptions.ignoreHiddenLayers
+    --#region Output Settings
+    optionsDialog:label({
+        id = "outputSettings",
+        label = "Output Settings",
+        text = "Configure the export JSON and image paths, and set output behavior."
     })
-
-    -- check: Option to clear old images in the output images directory before export
-    optionsDialog:check({
-        id = "clearOldImages",
-        label = "Clear Old Images",
-        text = "Delete existing images first, including leftovers from removed layers.",
-        selected = cachedOptions.clearOldImages
-    })
-    optionsDialog:separator({})
-    --#endregion
-    
-    --#region Output Path Settings
     -- entry: Output json path
     optionsDialog:entry({
         id = "outputPath",
@@ -541,6 +641,23 @@ function showExportOptionsDialog()
             end
         end
     })
+
+    -- check: Option to skip exporting hidden layers (including layers under hidden groups)
+    optionsDialog:check({
+        id = "ignoreHiddenLayers",
+        label = "Ignore Hidden Layers",
+        text = "Hidden layers and layers under hidden groups will not be output.",
+        selected = cachedOptions.ignoreHiddenLayers
+    })
+
+    -- check: Option to clear old images in the output images directory before export
+    optionsDialog:check({
+        id = "clearOldImages",
+        label = "Clear Old Images",
+        text = "Delete existing images first, including leftovers from removed layers.",
+        selected = cachedOptions.clearOldImages
+    })
+
     optionsDialog:separator({})
     --#endregion
 
@@ -565,8 +682,24 @@ function showExportOptionsDialog()
     })
     --#endregion
 
+    --#region Show MainUI
+    -- Delay one frame before refreshing so the logo canvas gets painted reliably.
+    local firstFrameRefreshTimer
+    firstFrameRefreshTimer = Timer({
+        interval = 1 / 60,
+        ontick = function()
+            if (firstFrameRefreshTimer ~= nil) then
+                firstFrameRefreshTimer:stop()
+            end
+            optionsDialog:repaint()
+            app:refresh()
+        end
+    })
+    firstFrameRefreshTimer:start()
+
     -- Show the dialog and wait for user input.
     optionsDialog:show({ wait = true})
+    --#endregion
 
     --#region options Data Extraction
     -- Get the selected options
@@ -607,6 +740,8 @@ function showExportOptionsDialog()
 
     return options
 end
+
+--#region Info Dialog Functions
 
 --[[
 Shows export completion dialog with action to open the exported file location.
@@ -661,6 +796,7 @@ function showExportCompletedDialog(jsonFileName, failedPaths)
 
     completedDialog:show({ wait = true })
 end
+--#endregion
 
 --#region Coordinates Settings Functions
 ORIGIN_MODE = {
@@ -1195,6 +1331,107 @@ function saveCachedOptions(configPath, options)
     configFile:write("ignoreHiddenLayers=" .. tostring(options.ignoreHiddenLayers == true) .. "\n")
     configFile:write("clearOldImages=" .. tostring(options.clearOldImages == true) .. "\n")
     configFile:close()
+end
+--#endregion
+
+--#region Other Functions
+
+-- Draws a consistent pixel-grid Spine logo on the options dialog.
+function DrawSpineLogo(optionsDialog)
+    if (optionsDialog == nil) then
+        return
+    end
+
+    -- load the logo image from cache.
+    local cacheDir = app.fs.joinPath(app.fs.filePath(app.fs.userConfigPath), "Cache")
+    app.fs.makeDirectory(cacheDir)
+    local logoPath = app.fs.joinPath(cacheDir, "Prepare-For-Spine-Logo.png")
+    local loadedImage = nil
+    local cacheFile = io.open(logoPath, "rb")
+    local hasCachedLogo = cacheFile ~= nil
+    if hasCachedLogo then
+        cacheFile:close()
+        local loadedOk, imageOrError = pcall(function()
+            return Image({ fromFile = logoPath })
+        end)
+        if (loadedOk == true and imageOrError ~= nil) then
+            loadedImage = imageOrError
+        end
+    end
+
+    -- if loading from cache failed, attempt to download the logo image and save it to cache, then load it.
+    if (loadedImage == nil) then
+        local logoUrl = "https://github.com/EsotericSoftware/spine-scripts/blob/master/aseprite/Images/Spine-Logo.png"
+        local downloadOk = false
+        if (app.fs.pathSeparator == "\\") then
+            local cmd = 'powershell -NoProfile -Command "try { Invoke-WebRequest -Uri \"' .. logoUrl .. '\" -OutFile \"' .. logoPath .. '\" -UseBasicParsing; exit 0 } catch { exit 1 }"'
+            local result = os.execute(cmd)
+            downloadOk = result == true or result == 0
+        else
+            local cmd = 'curl -L -o "' .. logoPath .. '" "' .. logoUrl .. '"'
+            local result = os.execute(cmd)
+            downloadOk = result == true or result == 0
+        end
+
+        if (downloadOk == true) then
+            local loadedOk, imageOrError = pcall(function()
+                return Image({ fromFile = logoPath })
+            end)
+            if (loadedOk == true and imageOrError ~= nil) then
+                loadedImage = imageOrError
+            end
+        end
+    end
+
+    -- Draw the logo image on a canvas in the options dialog, or show an error message if loading failed.
+    if (loadedImage == nil) then
+        optionsDialog:label({
+            id = "spineLogoStatus",
+            text = "Logo render failed (download/cache load)."
+        })
+        optionsDialog:newrow()
+        return
+    else
+        local displayScale = 2
+        local displayImage = loadedImage
+        -- Build a 2x nearest-neighbor display image for clearer pixel-art rendering in the dialog.
+        local scaledOk, scaledOrError = pcall(function()
+            local scaled = Image(loadedImage.width * displayScale, loadedImage.height * displayScale, loadedImage.colorMode)
+            for y = 0, loadedImage.height - 1 do
+                for x = 0, loadedImage.width - 1 do
+                    local px = loadedImage:getPixel(x, y)
+                    local sx = x * displayScale
+                    local sy = y * displayScale
+                    scaled:putPixel(sx, sy, px)
+                    scaled:putPixel(sx + 1, sy, px)
+                    scaled:putPixel(sx, sy + 1, px)
+                    scaled:putPixel(sx + 1, sy + 1, px)
+                end
+            end
+            return scaled
+        end)
+        if (scaledOk == true and scaledOrError ~= nil) then
+            displayImage = scaledOrError
+        end
+
+        local minCanvasWidth = 360
+        local canvasWidth = math.max(displayImage.width, minCanvasWidth)
+        local canvasHeight = displayImage.height
+        local drawX = math.floor((canvasWidth - displayImage.width) * 0.5)
+        local drawY = 0
+        optionsDialog:canvas({
+            id = "spineLogoCanvas",
+            width = canvasWidth,
+            height = canvasHeight,
+            onpaint = function(ev)
+                local gc = ev.context
+                gc.antialias = false
+                gc:drawImage(displayImage, drawX, drawY)
+            end
+        })
+    end
+
+    optionsDialog:separator({})
 end
 --#endregion
 
