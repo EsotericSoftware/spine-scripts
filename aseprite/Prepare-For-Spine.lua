@@ -1237,7 +1237,7 @@ function loadCachedOptions(defaultOutputPath)
     -- Create a config directory under the user's Aseprite config path, and define the config file path
     local configDir = app.fs.joinPath(app.fs.filePath(app.fs.userConfigPath), "Cache")
     app.fs.makeDirectory(configDir)
-    local configPath = app.fs.joinPath(configDir, "Prepare-For-Spine-Config.json")
+    local configPath = app.fs.joinPath(configDir, "Prepare-For-Spine-Config.txt")
     local configFile = io.open(configPath, "r")
     if (configFile == nil) then
         return cached, configPath
