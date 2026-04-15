@@ -194,9 +194,13 @@ function captureLayers(
     for i, layer in ipairs(layers) do
         -- Ignore groups and non-visible layers
         if (not layer.isGroup and effectiveVisibilities[i] == true and not isMarkerLayer(layer)) then
+            -- Skip layers with no cels (empty layers)
+            local cel = layer.cels[1]
+            if (cel == nil) then
+                goto continue
+            end
             -- Set the layer to visible so we can capture it, then set it back to hidden after
             layer.isVisible = true
-            local cel = layer.cels[1]
             local imagePath = imagesDir .. separator .. layer.name .. ".png"
             local savedOk = false
             savedOk = pcall(function()
@@ -236,6 +240,7 @@ function captureLayers(
                 skinsJson[index] = string.format([[ "%s": { "%s": { "x": %.3f, "y": %.3f, "width": 1, "height": 1 } } ]], name, name, attachmentX, attachmentY)
             end
             index = index + 1
+            ::continue::
         end
     end
 
