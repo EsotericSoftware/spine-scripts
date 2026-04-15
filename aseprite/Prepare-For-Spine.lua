@@ -279,31 +279,19 @@ function deleteDirectoryRecursive(path)
     if (path == nil or path == "") then
         return
     end
-
-    if (app.fs.pathSeparator == "\\") then
-        os.execute('rmdir /S /Q "' .. path .. '"')
-    else
-        os.execute('rm -rf "' .. path .. '"')
-    end
-end
-
---[[
-Opens the OS file explorer and selects the exported file when possible.
-filePath: The full path of the exported file
-]]
-function openFileLocation(filePath)
-    if (filePath == nil or filePath == "") then
+    if (not app.fs.isDirectory(path)) then
         return
     end
 
-    if (app.fs.pathSeparator == "\\") then
-        os.execute('explorer /select,"' .. filePath .. '"')
-    else
-        local dirPath = app.fs.filePath(filePath)
-        if (app.fs.pathSeparator == "/") then
-            os.execute('xdg-open "' .. dirPath .. '"')
+    for _, name in ipairs(app.fs.listFiles(path)) do
+        local fullPath = app.fs.joinPath(path, name)
+        if (app.fs.isDirectory(fullPath)) then
+            deleteDirectoryRecursive(fullPath)
+        else
+            os.remove(fullPath)
         end
     end
+    os.remove(path)
 end
 
 --#region Layer Marker Functions
@@ -775,14 +763,6 @@ function showExportCompletedDialog(jsonFileName, failedPaths)
     end
 
     completedDialog:newrow()
-    -- Button to open the file location in the OS file explorer.
-    completedDialog:button({
-        text = "Open File Folder",
-        onclick = function()
-            openFileLocation(jsonFileName)
-            completedDialog:close()
-        end
-    })
     -- Button to close the dialog.
     completedDialog:button({
         text = "OK",
