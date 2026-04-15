@@ -217,6 +217,7 @@ function captureLayers(
                     cropped:resize(scaledWidth, scaledHeight)
                 end
 
+                cropped:flatten()
                 cropped:saveCopyAs(imagePath)
                 cropped:close()
             end)
