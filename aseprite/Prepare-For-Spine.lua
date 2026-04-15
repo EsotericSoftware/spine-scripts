@@ -227,10 +227,10 @@ function captureLayers(
             attachmentX = attachmentX * scaleFactor
             attachmentY = attachmentY * scaleFactor
             slotsJson[index] = string.format([[ { "name": "%s", "bone": "%s", "attachment": "%s" } ]], name, "root", name)
-            -- If roundCoordinatesToInteger is true, round the attachmentX and attachmentY to the nearest integer using math.modf.  Otherwise, keep the decimal values with 3 decimal places.
+            -- If roundCoordinatesToInteger is true, round the attachmentX and attachmentY to the nearest integer.  Otherwise, keep the decimal values with 3 decimal places.
             if (roundCoordinatesToInteger == true) then
-                attachmentX = math.modf(attachmentX)
-                attachmentY = math.modf(attachmentY)
+                attachmentX = math.floor(attachmentX + 0.5)
+                attachmentY = math.floor(attachmentY + 0.5)
                 skinsJson[index] = string.format([[ "%s": { "%s": { "x": %d, "y": %d, "width": 1, "height": 1 } } ]], name, name, attachmentX, attachmentY)
             else
                 skinsJson[index] = string.format([[ "%s": { "%s": { "x": %.3f, "y": %.3f, "width": 1, "height": 1 } } ]], name, name, attachmentX, attachmentY)
