@@ -294,6 +294,8 @@ function deleteDirectoryRecursive(path)
     os.remove(path)
 end
 
+
+
 --#region Layer Marker Functions
 
 --[[
@@ -1293,94 +1295,83 @@ function DrawSpineLogo(optionsDialog)
         return
     end
 
-    -- load the logo image from cache.
-    local cacheDir = app.fs.joinPath(app.fs.filePath(app.fs.userConfigPath), "Cache")
-    app.fs.makeDirectory(cacheDir)
-    local logoPath = app.fs.joinPath(cacheDir, "Prepare-For-Spine-Logo.png")
-    local loadedImage = nil
-    local cacheFile = io.open(logoPath, "rb")
-    local hasCachedLogo = cacheFile ~= nil
-    if hasCachedLogo then
-        cacheFile:close()
-        local loadedOk, imageOrError = pcall(function()
-            return Image({ fromFile = logoPath })
-        end)
-        if (loadedOk == true and imageOrError ~= nil) then
-            loadedImage = imageOrError
-        end
-    end
+    -- Decode the embedded Spine logo (78x29, 4 colors, RLE-encoded).
+    -- To regenerate after changing Images/Spine-Logo.png:
+    --   1. Run tools/generate_logo_rle.lua in Aseprite (File > Scripts)
+    --   2. Paste the contents of tools/logo_rle_output.txt below.
+    local logoWidth = 78
+    local logoHeight = 29
+    local rleData = "40,70D,60,74D,30,76D,20,76D,0,34D,3R,74D,8R,70D,9R,43D,5W,6D,2W,D,5W,7D,9R,6D,2W,2D,4W,10D,5W,13D,7W,5D,9W,7D,7R,7D,2W,D,6W,8D,8W,10D,3W,3D,2W,5D,4W,2D,4W,9D,3R,8D,4W,3D,3W,6D,3W,4D,2W,10D,2W,11D,3W,4D,3W,20D,3W,5D,2W,6D,2W,6D,2W,9D,3W,10D,2W,6D,2W,7D,R,3D,R,8D,2W,6D,2W,5D,3W,6D,2W,10D,4W,8D,2W,6D,2W,6D,7R,7D,2W,6D,2W,5D,11W,11D,5W,6D,2W,6D,2W,6D,7R,7D,2W,6D,2W,5D,11W,13D,4W,5D,2W,6D,2W,7D,5R,8D,2W,6D,2W,5D,2W,24D,2W,5D,2W,6D,2W,9D,R,10D,2W,6D,2W,5D,2W,24D,2W,5D,3W,4D,3W,20D,2W,6D,2W,6D,2W,17D,2W,3D,3W,5D,4W,2D,3W,11D,3R,7D,2W,6D,2W,6D,3W,5D,2W,9D,7W,6D,2W,D,5W,10D,6R,6D,2W,6D,2W,7D,9W,10D,5W,7D,2W,2D,3W,12D,4R,7D,2W,6D,2W,9D,5W,24D,2W,18D,2R,56D,2W,76D,2W,76D,2W,18D,4R,75D,2R,37D,0,76D,20,76D,30,74D,60,70D,40"
+    local colorMap = {
+        ["0"] = app.pixelColor.rgba(0, 0, 0, 0),
+        ["R"] = app.pixelColor.rgba(255, 64, 0, 255),
+        ["W"] = app.pixelColor.rgba(240, 240, 241, 255),
+        ["D"] = app.pixelColor.rgba(2, 18, 18, 255),
+    }
 
-    -- if loading from cache failed, attempt to download the logo image and save it to cache, then load it.
-    if (loadedImage == nil) then
-        local logoUrl = "https://github.com/EsotericSoftware/spine-scripts/blob/master/aseprite/Images/Spine-Logo.png"
-        local downloadOk = false
-        if (app.fs.pathSeparator == "\\") then
-            local cmd = 'powershell -NoProfile -Command "try { Invoke-WebRequest -Uri \"' .. logoUrl .. '\" -OutFile \"' .. logoPath .. '\" -UseBasicParsing; exit 0 } catch { exit 1 }"'
-            local result = os.execute(cmd)
-            downloadOk = result == true or result == 0
-        else
-            local cmd = 'curl -L -o "' .. logoPath .. '" "' .. logoUrl .. '"'
-            local result = os.execute(cmd)
-            downloadOk = result == true or result == 0
-        end
-
-        if (downloadOk == true) then
-            local loadedOk, imageOrError = pcall(function()
-                return Image({ fromFile = logoPath })
-            end)
-            if (loadedOk == true and imageOrError ~= nil) then
-                loadedImage = imageOrError
+    local buildOk, logoImage = pcall(function()
+        local img = Image(logoWidth, logoHeight, ColorMode.RGB)
+        local px = 0
+        for token in string.gmatch(rleData, "[^,]+") do
+            local count, ch = string.match(token, "^(%d+)(.)$")
+            if (count == nil) then
+                ch = token
+                count = 1
+            else
+                count = tonumber(count)
+            end
+            local color = colorMap[ch]
+            for _ = 1, count do
+                local x = px % logoWidth
+                local y = math.floor(px / logoWidth)
+                img:drawPixel(x, y, color)
+                px = px + 1
             end
         end
-    end
+        return img
+    end)
 
-    -- Draw the logo image on a canvas in the options dialog, or show an error message if loading failed.
-    if (loadedImage == nil) then
-        optionsDialog:label({
-            id = "spineLogoStatus",
-            text = "Logo render failed (download/cache load)."
-        })
-        optionsDialog:newrow()
+    if (not buildOk or logoImage == nil) then
         return
-    else
-        local displayScale = 2
-        local displayImage = loadedImage
-        -- Build a 2x nearest-neighbor display image for clearer pixel-art rendering in the dialog.
-        local scaledOk, scaledOrError = pcall(function()
-            local scaled = Image(loadedImage.width * displayScale, loadedImage.height * displayScale, loadedImage.colorMode)
-            for y = 0, loadedImage.height - 1 do
-                for x = 0, loadedImage.width - 1 do
-                    local px = loadedImage:getPixel(x, y)
-                    local sx = x * displayScale
-                    local sy = y * displayScale
-                    scaled:putPixel(sx, sy, px)
-                    scaled:putPixel(sx + 1, sy, px)
-                    scaled:putPixel(sx, sy + 1, px)
-                    scaled:putPixel(sx + 1, sy + 1, px)
-                end
-            end
-            return scaled
-        end)
-        if (scaledOk == true and scaledOrError ~= nil) then
-            displayImage = scaledOrError
-        end
-
-        local minCanvasWidth = 360
-        local canvasWidth = math.max(displayImage.width, minCanvasWidth)
-        local canvasHeight = displayImage.height
-        local drawX = math.floor((canvasWidth - displayImage.width) * 0.5)
-        local drawY = 0
-        optionsDialog:canvas({
-            id = "spineLogoCanvas",
-            width = canvasWidth,
-            height = canvasHeight,
-            onpaint = function(ev)
-                local gc = ev.context
-                gc.antialias = false
-                gc:drawImage(displayImage, drawX, drawY)
-            end
-        })
     end
+
+    -- Build a 2x nearest-neighbor display image for clearer rendering in the dialog.
+    local displayScale = 2
+    local displayImage = logoImage
+    local scaledOk, scaledOrError = pcall(function()
+        local scaled = Image(logoWidth * displayScale, logoHeight * displayScale, ColorMode.RGB)
+        for y = 0, logoHeight - 1 do
+            for x = 0, logoWidth - 1 do
+                local px = logoImage:getPixel(x, y)
+                local sx = x * displayScale
+                local sy = y * displayScale
+                scaled:drawPixel(sx, sy, px)
+                scaled:drawPixel(sx + 1, sy, px)
+                scaled:drawPixel(sx, sy + 1, px)
+                scaled:drawPixel(sx + 1, sy + 1, px)
+            end
+        end
+        return scaled
+    end)
+    if (scaledOk == true and scaledOrError ~= nil) then
+        displayImage = scaledOrError
+    end
+
+    local minCanvasWidth = 360
+    local canvasWidth = math.max(displayImage.width, minCanvasWidth)
+    local canvasHeight = displayImage.height
+    local drawX = math.floor((canvasWidth - displayImage.width) * 0.5)
+    local drawY = 0
+    optionsDialog:canvas({
+        id = "spineLogoCanvas",
+        width = canvasWidth,
+        height = canvasHeight,
+        onpaint = function(ev)
+            local gc = ev.context
+            gc.antialias = false
+            gc:drawImage(displayImage, drawX, drawY)
+        end
+    })
 
     optionsDialog:separator({})
 end
