@@ -399,7 +399,7 @@ Shows the export options dialog and returns the selected options.
 ]]
 function showExportOptionsDialog()
     -- Create a dialog to show export optionsDialog
-    local optionsDialog = Dialog({ title = "Export To Spine v1.3" })
+    local optionsDialog = Dialog({ title = "Export To Spine v1.3.1" })
 
     -- Load cached options or use defaults if no cache exists
     local activeSprite = app.activeSprite
@@ -415,7 +415,7 @@ function showExportOptionsDialog()
     --#region Other Buttons
     -- button: Resets all options to their default values
     optionsDialog:button({
-        text = "Reset Config",
+        text = "Reset Settings",
         onclick = function()
             setOriginMode(optionsDialog, ORIGIN_MODE.NORMALIZED)
             setOriginPreset(optionsDialog, "bottom-center")
@@ -438,7 +438,7 @@ function showExportOptionsDialog()
     --#region Coordinate Settings
     optionsDialog:label({
         id = "coordinateSettings",
-        label = "Coordinate Settings",
+        label = "--- Coordinate Settings ---",
         text = "Set which position is used as the Spine origin (0,0). Range: [0,1]."
     })
     optionsDialog:newrow()
@@ -450,7 +450,7 @@ function showExportOptionsDialog()
     -- radio: Option to choose between normalized coordinates (0-1) or pixel-based coordinates
     optionsDialog:radio({
         id = "originModeNormalized",
-        label = "Origin Mode",
+        label = "|> [Origin Mode]",
         text = ORIGIN_MODE.NORMALIZED,
         selected = cachedOptions.originMode == ORIGIN_MODE.NORMALIZED,
         onclick = function()
@@ -469,7 +469,7 @@ function showExportOptionsDialog()
     -- number + slider: Coordinate origin X and Y.
     optionsDialog:number({
         id = "originX",
-        label = "Origin (X,Y)",
+        label = "|> [Origin (X,Y)]",
         text = string.format("%.3f", cachedOptions.originX),
         decimals = 3,
         onchange = function()
@@ -538,7 +538,7 @@ function showExportOptionsDialog()
     -- check: Option to round attachment coordinates to integers instead of keeping decimals
     optionsDialog:check({
         id = "roundCoordinatesToInteger",
-        label = "Round To Integer",
+        label = "|> [Round To Integer]",
         text = "Drop decimal pixels, May misalign pixels; not recommended for pixel art.",
         selected = cachedOptions.roundCoordinatesToInteger
     })
@@ -561,14 +561,14 @@ function showExportOptionsDialog()
     --#region Image Settings
     optionsDialog:label({
         id = "imageSettings",
-        label = "Image Settings",
+        label = "--- Image Settings ---",
         text = "Configure output image transform settings."
     })
 
     -- number + slider: Image scale as a percentage, where 100% means the same size as the original sprite.
     optionsDialog:number({
         id = "imageScalePercent",
-        label = "Scale (%)",
+        label = "|> [Scale (%)]",
         text = string.format("%.3f", cachedOptions.imageScalePercent),
         decimals = 3,
         onchange = function()
@@ -589,7 +589,7 @@ function showExportOptionsDialog()
     -- number + slider: Image padding in pixels.
     optionsDialog:number({
         id = "imagePaddingPx",
-        label = "Padding (px)",
+        label = "|> [Padding (px)]",
         text = string.format("%.0f", cachedOptions.imagePaddingPx),
         decimals = 0,
         onchange = function()
@@ -612,13 +612,13 @@ function showExportOptionsDialog()
     --#region Output Settings
     optionsDialog:label({
         id = "outputSettings",
-        label = "Output Settings",
+        label = "--- Output Settings ---",
         text = "Configure the export JSON and image paths, and set output behavior."
     })
     -- entry: Output json path
     optionsDialog:entry({
         id = "outputPath",
-        label = "Output Path",
+        label = "|> [Output Path]",
         text = cachedOptions.outputPath
     })
     -- file: File picker to select output json path (syncs with entry)
@@ -639,7 +639,7 @@ function showExportOptionsDialog()
     -- check: Option to skip exporting hidden layers (including layers under hidden groups)
     optionsDialog:check({
         id = "ignoreHiddenLayers",
-        label = "Ignore Hidden Layers",
+        label = "|> [Ignore Hidden Layers]",
         text = "Hidden layers and layers under hidden groups will not be output.",
         selected = cachedOptions.ignoreHiddenLayers
     })
@@ -647,7 +647,7 @@ function showExportOptionsDialog()
     -- check: Option to clear old images in the output images directory before export
     optionsDialog:check({
         id = "clearOldImages",
-        label = "Clear Old Images",
+        label = "|> [Clear Old Images]",
         text = "Delete existing images first, including leftovers from removed layers.",
         selected = cachedOptions.clearOldImages
     })

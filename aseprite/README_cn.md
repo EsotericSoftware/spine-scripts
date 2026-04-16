@@ -6,11 +6,15 @@ ___
 
 [English README](README.md)
 
+<div align="center">
+  <img src="Images/Spine-Logo.png" width="60%" alt="Spine Logo">
+</div>
+
 # aseprite-to-spine
 
 ## 用于将 Aseprite 项目导入 Spine 的 Lua 脚本
 
-## v1.3
+## v1.3.1
 
 ### 安装
 
@@ -69,7 +73,6 @@ ___
 
 * 执行按钮： 使用当前配置 开始导出。
   * Export 按钮：使用当前配置 开始导出。
-    * 导出完成后，可点击 [Open File Folder] 按钮直接 打开导出目录。
   * Cancel 按钮：关闭选项弹窗并 取消导出。
 
 #### 「Spine 导入」
@@ -97,6 +100,25 @@ ___
 * Import 按钮：使用当前配置 开始导入。
 * Cancel 按钮：关闭对话框并 取消导入。
 
+#### 「Spine 设置」
+
+在制作像素艺术时，通常需要 关闭平滑抗锯齿，以保持 像素颗粒的清晰度。
+
+1. 点击左上角 Spine图标 打开菜单，选择 **[Settings]**。
+2. 在 Settings窗口 的左侧菜单中，选择 **[Viewport]**。
+3. 在右侧的 Viewport 设置中，找到 **[Smoothing]** 选项，将平滑值设置为0。
+![alt text](Images/image-3.png)
+
+#### 「Spine 导出」
+
+在导出时，一般会将图片 打包为图集。为了保证 像素艺术的 像素颗粒的 清晰度，需要对 图集的导出设置 进行调整。
+
+1. 点击左上角 Spine图标 打开菜单，选择 **[Export]**。
+2. 需要打包图集时，点击 **[Pack Settings]** 按钮，打开 图集设置。
+![alt text](Images/image-4.png)
+3. 将**[Filter min]**与**[Filter mag]** 都设置为 **[Nearest]**，以保证 像素颗粒的清晰度。
+![alt text](Images/image-5.png)
+
 ### 已知问题
 
 * 打开 导出文件位置，目前依赖 `os` 库 API，可能导致短暂 UI 卡顿（几秒）。
@@ -104,6 +126,18 @@ ___
 * Aseprite 中新增的图层，在导入到 Spine 的现有骨架时，可能会出现 绘制顺序不正确 的问题，需要在 Spine 中手动调整。
 
 ### 版本历史
+
+#### v1.3.1
+
+* 优化核心逻辑与资产管理
+  * 使用纯 Lua 文件系统 API 替换 os.execute 命令行调用。
+  * 将 Spine 徽标嵌入为 RLE 数据，并添加重新生成工具。
+  * 优化了UI界面的布局与显示效果。
+* 修复关键缺陷并提升导出稳定性
+  * 修复舍入问题：使用 math.floor 代替 math.modf（截断）。
+  * 修复导出不包含像素单元的图层（空图层）时发生的崩溃。
+  * 通过在保存前合并克隆后的精灵，修复 PNG 图层警告。
+  * 将配置缓存的扩展名从 .json 重命名为 .txt（其并非 JSON 格式）。
 
 #### v1.3
 

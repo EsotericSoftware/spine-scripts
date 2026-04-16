@@ -6,11 +6,15 @@ ___
 
 [中文版 文档](README_cn.md)
 
+<div align="center">
+  <img src="Images/Spine-Logo.png" width="60%" alt="Spine Logo">
+</div>
+
 # aseprite-to-spine
 
 ## Lua Script for importing Aseprite projects into Spine
 
-## v1.3
+## v1.3.1
 
 ### Installation
 
@@ -69,7 +73,6 @@ After following these steps, the "Prepare-For-Spine" script should show up in th
 
 * Action Buttons: Start export using the current configuration.
   * Export Button: Starts the export process with the configured options.
-    * After export completes, click the [Open File Folder] button to open the directory containing the exported files.
   * Cancel Button: Closes the options dialog without exporting.
 
 #### 「Spine Import」
@@ -97,6 +100,25 @@ After following these steps, the "Prepare-For-Spine" script should show up in th
 * Import button: Start importing with the current configuration.
 * Cancel button: Close the dialog and cancel the import.
 
+#### 「Spine Settings」
+
+When creating pixel art, it is usually necessary to turn off smoothing/anti-aliasing to maintain the clarity of the pixel grains.
+
+1. Click the Spine icon in the upper left corner to open the menu and select **[Settings]**.
+2. In the Settings window, select **[Viewport]** from the menu on the left.
+3. In the Viewport settings on the right, find the **[Smoothing]** option and set the smoothing value to 0.
+![alt text](Images/image-3.png)
+
+#### 「Spine Export」
+
+When exporting, images are usually packed into an atlas. To ensure the clarity of pixel art, you need to adjust the export settings for the atlas.
+
+1. Click the Spine icon in the upper left corner to open the menu and select **[Export]**.
+2. If you need to pack an atlas, click the **[Pack Settings]** button to open the atlas settings.
+![alt text](Images/image-4.png)
+3. Set both **[Filter min]** and **[Filter mag]** to **[Nearest]** to ensure the clarity of the pixel grains.
+![alt text](Images/image-5.png)
+
 ### Known Issues
 
 * Opening the exported file location currently relies on `os` library APIs and may cause a brief UI stall (a few seconds).
@@ -104,6 +126,18 @@ After following these steps, the "Prepare-For-Spine" script should show up in th
 * New layers added in Aseprite may have incorrect draw order when imported into an existing Spine skeleton, and need to be adjusted manually in Spine.
 
 ### Version History
+
+#### v1.3.1
+
+* Refine core logic and optimize asset management
+  * Replace os.execute shell calls with pure Lua filesystem APIs.
+  * Embed Spine logo as RLE data, add regeneration tool.
+  * Optimize UI layout and display.
+* Fix critical bugs and improve export stability
+  * Fix rounding: use math.floor instead of math.modf (truncation).
+  * Fix crash when exporting layers with no cels (empty layers).
+  * Fix PNG layers warning by flattening cloned sprite before save.
+  * Rename config cache extension from .json to .txt (not JSON format).
 
 #### v1.3
 
