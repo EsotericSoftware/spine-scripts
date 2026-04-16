@@ -217,7 +217,15 @@ function captureLayers(
                     cropped:resize(scaledWidth, scaledHeight)
                 end
 
+                -- Delete all Invisible layers before flattening.
+                -- Otherwise, the invisible layers will also be merged and exported.
+                for i = #cropped.layers, 1, -1 do
+                    if not cropped.layers[i].isVisible then
+                        cropped:deleteLayer(cropped.layers[i])
+                    end
+                end
                 cropped:flatten()
+
                 cropped:saveCopyAs(imagePath)
                 cropped:close()
             end)
