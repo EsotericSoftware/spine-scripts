@@ -1,31 +1,29 @@
 #!/bin/bash
 
-
 ###########################
 ## Customization Section ##
 ###########################
+# Any setting below can be overridden from the caller's shell by exporting an
+# environment variable of the same name. Examples:
+#   SPINE_EXE=/Applications/Spine.app/Contents/MacOS/Spine ./spine-export.sh <path>
+#   MAX_PARALLEL=8 MAX_MEMORY=1G ./spine-export.sh <path>
 
-# Enter the path to the Spine executable.
-# On Windows this should be the Spine.com file.
-SPINE_EXE="/Applications/Spine.app/Contents/MacOS/Spine"
+# SPINE_EXE          - Path to the Spine executable (Spine.com on Windows).
+# VERSION            - Spine Editor version. End with .XX for latest patch (eg 4.1.XX).
+# DEFAULT_EXPORT     - Used when no .export.json is next to a .spine file.
+#                      "json" / "binary" / "json+pack" / "binary+pack", or path to a settings JSON file.
+# DEFAULT_OUTPUT_DIR - Output dir name used when falling back to the default export.
+# CLEANUP            - true/false. Animation cleanup. Forced on if 'cleanUp' is true in the export JSON.
+# MAX_PARALLEL       - Max Spine instances run in parallel. 1 = sequential.
+# MAX_MEMORY         - JVM max heap per Spine instance, passed as -Xmx (eg 512m, 1024m). 512m minimum, 4096m default.
 
-# Specify the version of Spine Editor you want to use.
-# End with ".XX" to use the latest patch version. For example: 4.1.XX
-VERSION="4.2.XX"
-
-# Specify the default export.
-# If "json" or "binary" is specified: JSON or binary export will be performed with default settings.
-# If "json+pack" or "binary+pack" is specified: Texture packing will also be performed with default settings.
-# Alternatively, you can specify the path to an export settings JSON file to use it for the default export settings.
-DEFAULT_EXPORT="binary+pack"
-
-# Specify the default output directory when exporting using the default export mode.
-# If the export settings JSON file is found, the output path in it will be used.
-DEFAULT_OUTPUT_DIR="export"
-
-# Define whether to perform animation cleanup (true/false).
-# Even if set to 'false,' cleanup will be performed if 'cleanUp' is set to 'true' in the export settings JSON file.
-CLEANUP="false"
+: "${SPINE_EXE:=/Applications/Spine.app/Contents/MacOS/Spine}"
+: "${VERSION:=4.2.XX}"
+: "${DEFAULT_EXPORT:=binary+pack}"
+: "${DEFAULT_OUTPUT_DIR:=export}"
+: "${CLEANUP:=false}"
+: "${MAX_PARALLEL:=2}"
+: "${MAX_MEMORY:=512m}"
 
 ##################
 ## Begin Script ##
@@ -38,20 +36,21 @@ waitForKeypress () {
 	read -n 1 -s -r -p "Press any key to exit."
 }
 
+# Try common Windows fallback paths if the configured one doesn't exist.
 if [ ! -f "$SPINE_EXE" ]; then
-	SPINE_EXE="C:/Program Files/Spine/Spine.com"
-	if [ ! -f "$SPINE_EXE" ]; then
-		SPINE_EXE="/mnt/c/Program Files/Spine/Spine.com"
-		if [ ! -f "$SPINE_EXE" ]; then
-			SPINE_EXE="/cygdrive/C/Program Files/Spine/Spine.com"
-		fi
-	fi
+	for try in \
+		"C:/Program Files/Spine/Spine.com" \
+		"/mnt/c/Program Files/Spine/Spine.com" \
+		"/cygdrive/C/Program Files/Spine/Spine.com"
+	do
+		if [ -f "$try" ]; then SPINE_EXE="$try"; break; fi
+	done
 fi
 
 # Check if the Spine editor executable was found.
 if [ ! -f "$SPINE_EXE" ]; then
-	echo "Error: Spine editor executable was not found."
-	echo "Edit the script and set the 'SPINE_EXE' path."
+	echo "Error: Spine editor executable was not found at '$SPINE_EXE'."
+	echo "Edit the script's default or set the 'SPINE_EXE' environment variable before running."
 	waitForKeypress
 	exit 1
 fi
@@ -64,6 +63,19 @@ fi
 
 echo "Spine: $SPINE_EXE"
 echo "Path: $search_dir"
+echo "Parallel jobs: $MAX_PARALLEL  Max heap: $MAX_MEMORY"
+
+# Per-run scratch directory for per-job log files.
+log_dir=$(mktemp -d)
+trap 'rm -rf "$log_dir"' EXIT
+
+export_error_count=0
+active_pids=()
+active_logs=()
+
+#############
+## Methods ##
+#############
 
 exportUsingJsonSettings () {
 	local json_file=$1
@@ -73,31 +85,33 @@ exportUsingJsonSettings () {
 	# Replaces double-backslash and trailing comma.
 	output_path=$(sed -n 's/"output".*"\([^"]*\)"/\1/p' "$json_file" | sed -r 's/\\\\/\\/g' | sed -r 's/,$//g' )
 
-	# Add the appropriate parameters to the 'command_args' array.
-	local command_args=("--update" "$VERSION" "--input" "$file_path")
+	local command_args=("-Xmx$MAX_MEMORY" "--update" "$VERSION" "--input" "$file_path")
 
 	# Add the --clean option if CLEANUP is set to "true".
 	if [ "$CLEANUP" = "true" ]; then
 		command_args+=("--clean")
 	fi
 
-	# Add other options
-	command_args_fallback="${command_args[@]}"
+	local command_args_fallback=("${command_args[@]}")
 	command_args+=("--export" "$json_file")
 
+	echo ">> $SPINE_EXE ${command_args[*]}"
 	if "$SPINE_EXE" "${command_args[@]}"; then
 		echo "Exported to the following directory: $output_path"
+		return 0
 	else
-		export_error_count=$((export_error_count + 1))
-		parent_path=$(dirname "$file_path")
+		local parent_path; parent_path=$(dirname "$file_path")
 		output_path="$parent_path/$DEFAULT_OUTPUT_DIR"
 		echo "Export failed. Exporting to default output directory $output_path."
 
 		command_args_fallback+=("--output" "$output_path" "--export" "$json_file")
+		echo ">> $SPINE_EXE ${command_args_fallback[*]}"
 		if "$SPINE_EXE" "${command_args_fallback[@]}"; then
 			echo "Exported to the following default output directory: $output_path"
+			return 0
 		else
 			echo "Export to default output directory failed."
+			return 1
 		fi
 	fi
 }
@@ -106,112 +120,173 @@ exportUsingDefaultSettings () {
 	local parent_path="$1"
 	local file_path="$2"
 
-	local command_args=("--update" "$VERSION" "--input" "$file_path")
+	local command_args=("-Xmx$MAX_MEMORY" "--update" "$VERSION" "--input" "$file_path")
 
-	# Add the -m option if CLEANUP is set to "true".
 	if [ "$CLEANUP" = "true" ]; then
 		command_args+=("--clean")
 	fi
 
-	# Add other output and export options.
 	command_args+=("--output" "$parent_path/$DEFAULT_OUTPUT_DIR" "--export" "$DEFAULT_EXPORT")
+
+	echo ">> $SPINE_EXE ${command_args[*]}"
 	if "$SPINE_EXE" "${command_args[@]}"; then
 		echo "Exported to the following directory: $parent_path/$DEFAULT_OUTPUT_DIR"
+		return 0
 	else
-		export_error_count=$((export_error_count + 1))
 		echo "Export failed."
+		return 1
 	fi
 }
 
 isValidExportJson () {
 	local json_file="$1"
-	local export_type=$(grep 'class":\s*"export-.*"' "$json_file")
-	# Check if '"class": "export-"' is found, return 1 if not.
-	if [[ -z "$export_type" ]] ; then
+	local export_type
+	export_type=$(grep 'class":\s*"export-.*"' "$json_file" || true)
+	if [[ -z "$export_type" ]]; then
 		return 1
 	else
 		return 0
 	fi
 }
 
-# Count the .spine files found.
-spine_file_count=0
-export_error_count=0
+# Process a single .spine file. All output goes to current stdout/stderr,
+# which the caller may redirect to a per-job log when running in parallel.
+processSpineFile () {
+	local file_path="$1"
+	local job_id="$2"
+	local local_error=0
 
-# Save .spine files to a temporary file.
-tmp_file=$(mktemp)
-
-# Search recursively for files with extension ".spine".
-find "$search_dir" -type f -name "*.spine" > "$tmp_file"
-
-# Check if there are files with extension ".spine" within the specified directory.
-while IFS= read -r file_path; do
-	spine_file_count=$((spine_file_count + 1))
-
-	# Calculate the relative path from $search_dir.
-	relative_path="${file_path#$search_dir/}"
-
+	local relative_path="${file_path#$search_dir/}"
 	echo "================================================================================"
-	echo "#$spine_file_count : $relative_path"
+	echo "#$job_id : $relative_path"
 
-	# Set parent_path to the .spine file's parent directory.
-	parent_path="$(dirname "$file_path")"
+	local parent_path; parent_path="$(dirname "$file_path")"
 
-	# Initialize the json_files array.
-	json_files=()
-
-	# Enable nullglob.
+	local json_files=()
 	shopt -s nullglob
-
-	# Find .export.json files within the specified directory and add them to the json_files array.
 	for json_file in "$parent_path"/*.export.json; do
 		json_files+=("$json_file")
 	done
-
-	# Disable nullglob.
 	shopt -u nullglob
 
 	if [ ${#json_files[@]} -ge 2 ]; then
 		echo "Multiple '.export.json' files were found:"
-
-		# Get the length of the json_files array.
-		json_file_count=${#json_files[@]}
-
-		# Count the export operations.
-		export_count=0
-		# Process each .export.json.
+		local json_file_count=${#json_files[@]}
+		local export_count=0
 		for json_file in "${json_files[@]}"; do
 			if isValidExportJson "$json_file"; then
 				echo "--------------------------------------------------------------------------------"
 				export_count=$((export_count + 1))
-
-				# Calculate the relative path from $search_dir.
-				relative_json_path="${json_file#$search_dir/}"
+				local relative_json_path="${json_file#$search_dir/}"
 				echo "($export_count/$json_file_count) Exporting with the export settings JSON file: $relative_json_path"
-				exportUsingJsonSettings "$json_file" "$file_path"
+				if ! exportUsingJsonSettings "$json_file" "$file_path"; then
+					local_error=1
+				fi
 			else
 				echo "The '.export.json' file does not appear to be export settings JSON. This file will be skipped."
 			fi
 		done
 	elif [ ${#json_files[@]} -eq 1 ]; then
-		# Process the .export.json file.
-		json_file=${json_files[0]}
+		local json_file=${json_files[0]}
 		if isValidExportJson "$json_file"; then
-			relative_json_path="${json_file#$search_dir/}"
+			local relative_json_path="${json_file#$search_dir/}"
 			echo "Exporting with the export settings JSON file: $relative_json_path"
-			exportUsingJsonSettings "$json_file" "$file_path"
+			if ! exportUsingJsonSettings "$json_file" "$file_path"; then
+				local_error=1
+			fi
 		else
 			echo "The '.export.json' file does not appear to be export settings JSON. Default settings ('$DEFAULT_EXPORT') will be used for export."
-			exportUsingDefaultSettings "$parent_path" "$file_path"
+			if ! exportUsingDefaultSettings "$parent_path" "$file_path"; then
+				local_error=1
+			fi
 		fi
 	else
 		echo "No '.export.json' files were found in the same directory as the Spine project. Default settings ('$DEFAULT_EXPORT') will be used for export."
-		exportUsingDefaultSettings "$parent_path" "$file_path"
+		if ! exportUsingDefaultSettings "$parent_path" "$file_path"; then
+			local_error=1
+		fi
+	fi
+
+	return $local_error
+}
+
+# Print logs for any background jobs that have finished, and reap them.
+# Output is in completion order; each log starts with its own #N header.
+drainCompleted () {
+	local new_pids=()
+	local new_logs=()
+	local i pid log
+	for i in "${!active_pids[@]}"; do
+		pid="${active_pids[$i]}"
+		log="${active_logs[$i]}"
+		if kill -0 "$pid" 2>/dev/null; then
+			new_pids+=("$pid")
+			new_logs+=("$log")
+		else
+			if wait "$pid"; then :; else
+				export_error_count=$((export_error_count + 1))
+			fi
+			cat "$log" 2>/dev/null || true
+			rm -f "$log"
+		fi
+	done
+	active_pids=("${new_pids[@]}")
+	active_logs=("${new_logs[@]}")
+}
+
+waitForSlot () {
+	while [ "${#active_pids[@]}" -ge "$MAX_PARALLEL" ]; do
+		sleep 0.5
+		drainCompleted
+	done
+}
+
+waitAll () {
+	while [ "${#active_pids[@]}" -gt 0 ]; do
+		sleep 0.5
+		drainCompleted
+	done
+}
+
+###################
+## Main Loop     ##
+###################
+
+# Save .spine files to a temporary file.
+# Use bash's recursive globbing instead of external `find` so we don't get
+# tripped up by Windows' find.exe shadowing GNU find on Git Bash / WSL.
+tmp_file="$log_dir/filelist.txt"
+: > "$tmp_file"
+shopt -s globstar nullglob
+for f in "$search_dir"/**/*.spine; do
+	[ -f "$f" ] && printf '%s\n' "$f" >> "$tmp_file"
+done
+shopt -u globstar nullglob
+
+spine_file_count=0
+
+while IFS= read -r file_path; do
+	spine_file_count=$((spine_file_count + 1))
+	job_id=$spine_file_count
+
+	if [ "$MAX_PARALLEL" -le 1 ]; then
+		# Sequential: stream output directly so it appears live.
+		if ! processSpineFile "$file_path" "$job_id"; then
+			export_error_count=$((export_error_count + 1))
+		fi
+	else
+		waitForSlot
+		log_file="$log_dir/job-$job_id.log"
+		( processSpineFile "$file_path" "$job_id" >"$log_file" 2>&1 ) &
+		active_pids+=("$!")
+		active_logs+=("$log_file")
+		drainCompleted
 	fi
 done < "$tmp_file"
 
-# Delete the temporary file.
-rm "$tmp_file"
+# Wait for any remaining background jobs.
+waitAll
+drainCompleted
 
 echo "================================================================================"
 
