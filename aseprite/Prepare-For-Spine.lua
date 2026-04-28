@@ -22,11 +22,11 @@ function flattenWithEffectiveVisibility(parent, outLayers, outVis, groupIsVisibl
         else
             effectiveVisible = true
         end
-        
+
         -- Append the layer and its effective visibility to the output arrays
         outLayers[#outLayers + 1] = layer
         outVis[#outVis + 1] = effectiveVisible
-        
+
         -- If this layer is a group, recursively flatten its children, passing down the effective visibility
         if layer.isGroup then
             flattenWithEffectiveVisibility(layer, outLayers, outVis, effectiveVisible, ignoreHiddenLayers)
@@ -121,13 +121,13 @@ imageScalePercent: the scale percentage to apply to exported image resolution
 imagePaddingPx: the padding to apply around each captured image, in pixels
 ]]
 function captureLayers(
-    layers, 
-    sprite, 
-    effectiveVisibilities, 
-    outputPath, 
-    clearOldImages, 
-    originX, 
-    originY, 
+    layers,
+    sprite,
+    effectiveVisibilities,
+    outputPath,
+    clearOldImages,
+    originX,
+    originY,
     roundCoordinatesToInteger,
     imageScalePercent,
     imagePaddingPx)
@@ -216,7 +216,7 @@ function captureLayers(
                 if (scaledWidth ~= cropWidth or scaledHeight ~= cropHeight) then
                     cropped:resize(scaledWidth, scaledHeight)
                 end
-                
+
                 -- Delete all Invisible layers before flattening.
                 -- Otherwise, the invisible layers will also be merged and exported.
                 local function deleteInvisibleLayers(layers)
@@ -349,7 +349,7 @@ function isMarkerLayer(layer)
     if (layer == nil or layer.isGroup) then
         return false
     end
-    
+
     if (layer.name == nil) then
         return false
     end
@@ -423,7 +423,7 @@ function showExportOptionsDialog()
     local spriteOutputName = app.fs.fileTitle(activeSprite.filename)
     local defaultOutputPath = spriteOutputDir .. app.fs.pathSeparator .. spriteOutputName .. ".json"
     local cachedOptions, configPath = loadCachedOptions(defaultOutputPath)
-    
+
     -- Draw the Spine logo at the top.
     DrawSpineLogo(optionsDialog)
 
@@ -480,7 +480,7 @@ function showExportOptionsDialog()
             setOriginMode(optionsDialog, ORIGIN_MODE.PIXEL)
         end
     })
-    
+
     -- number + slider: Coordinate origin X and Y.
     optionsDialog:number({
         id = "originX",
@@ -856,8 +856,8 @@ x: The preset origin X value to set
 y: The preset origin Y value to set
 ]]
 function setOriginXyValues(optionsDialog, x, y)
-    optionsDialog:modify({ id = "originX", text = string.format(x) })
-    optionsDialog:modify({ id = "originY", text = string.format(y) })
+    optionsDialog:modify({ id = "originX", text = string.format("%.3f", x) })
+    optionsDialog:modify({ id = "originY", text = string.format("%.3f", y) })
     clampOriginXyFieldValue(optionsDialog)
 end
 
