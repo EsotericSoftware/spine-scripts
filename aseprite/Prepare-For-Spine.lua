@@ -223,7 +223,7 @@ function captureLayers(
                     for i = #layers, 1, -1 do
                         local layer = layers[i]
                         if not layer.isVisible then
-                            layer.sprite:deleteLayer(layer)
+                            cropped:deleteLayer(layer)
                         elseif layer.isGroup then
                             deleteInvisibleLayers(layer.layers)
                         end
