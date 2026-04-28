@@ -216,14 +216,21 @@ function captureLayers(
                 if (scaledWidth ~= cropWidth or scaledHeight ~= cropHeight) then
                     cropped:resize(scaledWidth, scaledHeight)
                 end
-
+                
                 -- Delete all Invisible layers before flattening.
                 -- Otherwise, the invisible layers will also be merged and exported.
-                for i = #cropped.layers, 1, -1 do
-                    if not cropped.layers[i].isVisible then
-                        cropped:deleteLayer(cropped.layers[i])
+                local function deleteInvisibleLayers(layers)
+                    for i = #layers, 1, -1 do
+                        local layer = layers[i]
+                        if not layer.isVisible then
+                            layer.sprite:deleteLayer(layer)
+                        elseif layer.isGroup then
+                            deleteInvisibleLayers(layer.layers)
+                        end
                     end
                 end
+                deleteInvisibleLayers(cropped.layers)
+                -- flatten the image to merge all visible layers into one.
                 cropped:flatten()
 
                 cropped:saveCopyAs(imagePath)
