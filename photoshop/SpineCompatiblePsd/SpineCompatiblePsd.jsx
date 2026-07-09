@@ -3,7 +3,7 @@ app.bringToFront();
 
 // https://github.com/EsotericSoftware/spine-scripts/tree/master/photoshop
 // This script saves a copy of an Adobe Photoshop file compatible with the Import PSD functionality of Spine.
-// It applies all adjustment layers, clipping masks and layer effects.
+// It merges [merge] groups and applies all adjustment layers, clipping masks and layer effects.
 
 // Copyright (c) 2012-2024, Esoteric Software
 // All rights reserved.
@@ -13,7 +13,7 @@ app.bringToFront();
 //     * Neither the name of Esoteric Software nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-var scriptVersion = "1.01"; // This is incremented every time the script is modified, so you know if you have the latest.
+var scriptVersion = "1.02"; // This is incremented every time the script is modified, so you know if you have the latest.
 
 var cs2 = parseInt(app.version) < 10, cID = charIDToTypeID, sID = stringIDToTypeID, tID = typeIDToStringID;
 
@@ -45,6 +45,10 @@ function run () {
 		return;
 	}
 
+    // [merge] groups must be merged before rasterizeAll, so Photoshop bakes the group's live vector stroke/clipping behavior.
+    mergeTaggedGroups();
+    if (cancel) return;
+    deselectLayers();
 	rasterizeAll();
     // it's important to keep this layer otherwise if it's needed to duplicate the original top layer, it will be moved instead.
     var topLayer = activeDocument.artLayers.add();
@@ -299,7 +303,7 @@ function showHelpDialog () {
 	dialog.alignment = ["", "top"];
 	var helpText = dialog.add("statictext", undefined, ""
         + "This script saves a copy of an Adobe Photoshop file compatible with the Import PSD functionality of Spine.\n"
-        + "It applies all adjustment layers, clipping masks and layer effects.\n"
+        + "It merges [merge] groups and applies all adjustment layers, clipping masks and layer effects.\n"
         + "\n"
 	, {multiline: true});
 	helpText.preferredSize.width = 325;
@@ -372,6 +376,48 @@ function incrProgress (layerName) {
 }
 
 // SpineCompatiblePsd utility:
+
+function mergeTaggedGroups () {
+    var count = countMergeGroups(activeDocument);
+    if (count == 0) return;
+    showProgress("Merging [merge] groups...", count);
+    mergeTaggedGroupsRecursive(activeDocument);
+}
+
+function countMergeGroups (parent) {
+    var count = 0;
+    for (var i = 0; i < parent.layerSets.length; i++) {
+        var group = parent.layerSets[i];
+        count += countMergeGroups(group);
+        if (isMergeGroupName(group.name)) count++;
+    }
+    return count;
+}
+
+function mergeTaggedGroupsRecursive (parent) {
+    // Iterate backwards because merging a group removes it from the parent's layerSets collection.
+    for (var i = parent.layerSets.length - 1; i >= 0; i--) {
+        if (cancel) return;
+
+        var group = parent.layerSets[i];
+        mergeTaggedGroupsRecursive(group);
+        if (!isMergeGroupName(group.name)) continue;
+
+        var groupName = group.name;
+        incrProgress(groupName);
+        try {
+            var layer = new Layer(group.id, null, false);
+            layer.unlock();
+        } catch (ignored) {}
+        activeDocument.activeLayer = group;
+        merge();
+        activeDocument.activeLayer.name = groupName;
+    }
+}
+
+function isMergeGroupName (name) {
+    return /\[\s*merge(?:\s*:[^\]]*)?\s*\]/i.test(name);
+}
 
 function initializeLayers (context, parent, parentLayers, adjustmentAndClippings, layersWithEffects, toHide, adjustmentStack, clippingStack, prevClipping) {
 	while (context.index >= context.first) {
