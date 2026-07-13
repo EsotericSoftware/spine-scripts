@@ -13,7 +13,7 @@ app.bringToFront();
 //     * Neither the name of Esoteric Software nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-var scriptVersion = "1.03"; // This is incremented every time the script is modified, so you know if you have the latest.
+var scriptVersion = "1.04"; // This is incremented every time the script is modified, so you know if you have the latest.
 
 var cs2 = parseInt(app.version) < 10, cID = charIDToTypeID, sID = stringIDToTypeID, tID = typeIDToStringID;
 
@@ -66,6 +66,7 @@ function run () {
     var toHide = [];
     showProgress("Rasterizing layers...", context.index);
     initializeLayers(context, null, rootLayers, adjustmentAndClippings, layersWithEffects, toHide, [], [], false);
+    if (cancel) return;
     showProgress("Merging clipping masks and adjustment layers...", adjustmentAndClippings.length);
        
     for (var i = adjustmentAndClippings.length - 1; i >= 0 ; i--) {
@@ -107,12 +108,12 @@ function run () {
     
     // rasterize layer effects where necessary
     for (var id in layersWithEffects) {
-         layersWithEffects[id].rasterizeStyles();
+         if (layersWithEffects[id].exists()) layersWithEffects[id].rasterizeStyles();
     }
 
     // hide layers that were hidden at the beginning
     for (var i = 0; i < toHide.length; i++) {
-        toHide[i].hide();
+        if (toHide[i].exists()) toHide[i].hide();
     }
     
     // delete top layer
@@ -397,21 +398,75 @@ function countMergeGroups (parent) {
 function mergeTaggedGroupsRecursive (parent) {
     // Iterate backwards because merging a group removes it from the parent's layerSets collection.
     for (var i = parent.layerSets.length - 1; i >= 0; i--) {
-        if (cancel) return;
-
         var group = parent.layerSets[i];
         mergeTaggedGroupsRecursive(group);
+        if (cancel) return;
         if (!isMergeGroupName(group.name)) continue;
 
         var groupName = group.name;
         incrProgress(groupName);
+        if (!hasArtLayer(group)) continue;
+
+        var ancestorState = showHiddenGroupAncestors(group);
+        unlockGroupContents(group);
+
         var layer = new Layer(group.id, null, false);
+        var wasVisible = layer.visible;
+        var wasLocked = layer.locked;
         try {
             layer.unlock();
         } catch (ignored) {}
+        if (!wasVisible) layer.show();
         layer.select();
         merge();
         activeDocument.activeLayer.name = groupName;
+        var mergedLayer = new Layer(activeDocument.activeLayer.id, null, false);
+        if (!wasVisible) mergedLayer.hide();
+        if (wasLocked) mergedLayer.setLocked(true);
+        restoreGroupAncestors(ancestorState);
+    }
+}
+
+function hasArtLayer (group) {
+    for (var i = 0; i < group.artLayers.length; i++)
+        return true;
+    for (var i = 0; i < group.layerSets.length; i++)
+        if (hasArtLayer(group.layerSets[i])) return true;
+    return false;
+}
+
+function showHiddenGroupAncestors (group) {
+    var ancestors = [], state = {hidden: [], locked: []};
+    for (var parent = group.parent; parent && parent.typename == "LayerSet"; parent = parent.parent)
+        ancestors.push(new Layer(parent.id, null, false));
+
+    for (var i = ancestors.length - 1; i >= 0; i--) {
+        var layer = ancestors[i];
+        if (layer.locked) {
+            layer.unlock();
+            state.locked.push(layer);
+        }
+        if (layer.visible) continue;
+        layer.show();
+        state.hidden.push(layer);
+    }
+    return state;
+}
+
+function restoreGroupAncestors (state) {
+    for (var i = state.hidden.length - 1; i >= 0; i--)
+        state.hidden[i].hide();
+    for (var i = state.locked.length - 1; i >= 0; i--)
+        state.locked[i].setLocked(true);
+}
+
+function unlockGroupContents (group) {
+    for (var i = 0; i < group.layers.length; i++) {
+        var child = group.layers[i];
+        try {
+            new Layer(child.id, null, false).unlock();
+        } catch (ignored) {}
+        if (child.typename == "LayerSet") unlockGroupContents(child);
     }
 }
 
@@ -741,6 +796,16 @@ Layer.prototype.has = function (name) {
 	return false;
 };
 
+Layer.prototype.exists = function () {
+	var ref = new ActionReference();
+	ref.putIdentifier(cID("Lyr "), this.id);
+	try {
+		executeActionGet(ref);
+		return true;
+	} catch (ignored) {}
+	return false;
+};
+
 Layer.prototype.getIndex = function () {
 	return this.get("itemIndex", "Integer");
 };
@@ -788,7 +853,10 @@ Layer.prototype.setLocked = function (locked) {
 	ref.putIdentifier(cID("Lyr "), this.id);
 	desc1.putReference(cID("null"), ref);
 	var desc2 = new ActionDescriptor();
-	desc2.putBoolean(sID("protectNone"), true);
+	if (locked)
+		desc2.putBoolean(sID("protectAll"), true);
+	else
+		desc2.putBoolean(sID("protectNone"), true);
 	desc1.putObject(sID("layerLocking"), sID("layerLocking"), desc2);
 	executeAction(sID("applyLocking"), desc1, DialogModes.NO);
 };
@@ -839,10 +907,13 @@ Layer.prototype.duplicate = function () {
     var idNm = charIDToTypeID( "Nm  " );
     desc.putString( idNm, """copy""" );
     executeAction( charIDToTypeID( "Dplc" ), desc, DialogModes.NO );
-    return new Layer(app.activeDocument.activeLayer.id, null, true);
+    var duplicate = new Layer(app.activeDocument.activeLayer.id, null, true);
+    duplicate.unlock();
+    return duplicate;
 };
 
 Layer.prototype.mergeClippingMask = function () {
+	this.unlock();
 	this.select();
 	try {
 		merge(); // Merges any clipping masks.
@@ -851,6 +922,7 @@ Layer.prototype.mergeClippingMask = function () {
 
 Layer.prototype.rasterizeStyles = function () {   
      if (this.has("layerEffects")) {
+        this.unlock();
         this.select();
         newLayerBelow(this.name);
         this.select(true);
