@@ -14,7 +14,7 @@ app.bringToFront();
 //     * Neither the name of Esoteric Software nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-var scriptVersion = "7.41"; // This is incremented every time the script is modified, so you know if you have the latest.
+var scriptVersion = "7.42"; // This is incremented every time the script is modified, so you know if you have the latest.
 
 var revealAll = false; // Set to true to enlarge the canvas so layers are not cropped.
 var legacyJson = true; // Set to false to output the newer Spine JSON format.
@@ -208,6 +208,8 @@ function run () {
 			layer.placeholderName = layer.attachmentName.substring(skinName.length + 1);
 
 		layer.mesh = layer.findTagValue("mesh", true);
+		var trim = layer.findTagValue("trim");
+		layer.trim = trim != null ? trim != "false" : settings.trimWhitespace;
 
 		layer.slotName = layer.findTagValue("slot") || name;
 		var slot = get(slots, layer.slotName);
@@ -320,6 +322,28 @@ function run () {
 		error(message + "\n\nRename or use the [ignore] tag for these layers.");
 	}
 
+	if (!errors.length) {
+		for (var slotName in slots) {
+			if (!slots.hasOwnProperty(slotName)) continue;
+			var layers = slots[slotName].layers;
+			for (var attachmentName in layers) {
+				if (!layers.hasOwnProperty(attachmentName)) continue;
+				var layer = layers[attachmentName];
+				if (!layer.mesh) continue;
+				var source = layer, visited = [];
+				while (source.mesh !== true) {
+					if (indexOf(visited, source) != -1) {
+						error("Mesh sources form a cycle:\n\n" + layer.path());
+						break;
+					}
+					visited.push(source);
+					source = source.mesh;
+				}
+				if (source.mesh === true && source.trim) layer.scaledMeshSource = source;
+			}
+		}
+	}
+
 	var n = errors.length;
 	if (n) {
 		var first = errors[0];
@@ -375,22 +399,27 @@ function run () {
 			slotName = stripName(slotName);
 
 			var jsonSlot = "";
-			for (var i = skinLayers.length - 1; i >= 0; i--) {
+			var outputLayer = function (layer) {
+				if (layer.json != null) return layer.json;
+				var output = layer, meshSource = layer.scaledMeshSource;
+				output.json = "";
+				// Prepare the source once, even when a linked layer appears earlier or in another skin.
+				if (meshSource && meshSource != layer && !outputLayer(meshSource)) return "";
 				layerCount++;
-				var layer = skinLayers[i];
 				layer.show();
 
 				incrProgress(layer.name);
-				if (cancel) return;
+				if (cancel) return "";
 
 				var attachmentName = layer.attachmentName, attachmentPath = layer.attachmentPath, placeholderName = layer.placeholderName, mesh = layer.mesh;
 				var scale = layer.scale, overlays = layer.overlays;
 
-				var trim = layer.findTagValue("trim");
-				if (trim != null)
-					trim = trim != "false";
-				else
-					trim = settings.trimWhitespace;
+				var trim = layer.trim;
+				if (meshSource) {
+					trim = true;
+					scale = meshSource.scale;
+					if (mesh !== true) mesh = meshSource;
+				}
 
 				if (layer.isGroup) {
 					layer.select();
@@ -406,57 +435,65 @@ function run () {
 					overlay.show();
 				}
 
-				var bounds = mesh && mesh != true ? mesh : layer;
-				bounds.updateBounds();
+				var sourceImage = meshSource && meshSource != output ? meshSource.scaledImage : null;
+				var bounds = sourceImage ? sourceImage.bounds : mesh && mesh != true ? mesh : layer;
+				if (!sourceImage) bounds.updateBounds();
 				if (!bounds.width || !bounds.height) {
 					layer.hide();
-					continue;
+					return "";
 				}
 				slot.attachments = true;
 
-				if (writeImages) storeHistory();
+				storeHistory();
 
-				var x, y, width, height, docHeightCropped;
-				if (trim) {
-					x = bounds.left;
-					y = bounds.top;
-					width = bounds.width;
-					height = bounds.height;
-					activeDocument.crop([x - xOffSet, y - yOffSet, bounds.right - xOffSet, bounds.bottom - yOffSet], 0, width, height);
-					x *= settings.scale;
-					y *= settings.scale;
-					docHeightCropped = height;
+				var x, y, width, height, attachmentImage;
+				if (mesh && !meshSource) {
+					if (trim) {
+						x = bounds.left;
+						y = bounds.top;
+						width = bounds.width;
+						height = bounds.height;
+						activeDocument.crop([x - xOffSet, y - yOffSet, bounds.right - xOffSet, bounds.bottom - yOffSet], 0, width, height);
+						x *= settings.scale;
+						y *= settings.scale;
+					} else {
+						x = 0;
+						y = 0;
+						width = docWidth;
+						height = docHeight;
+					}
+					width = width * settings.scale + settings.padding * 2;
+					height = height * settings.scale + settings.padding * 2;
+					if (writeImages) {
+						scaleImage(settings.scale * scale);
+						if (settings.padding > 0) activeDocument.resizeCanvas(width * scale, height * scale, AnchorPosition.MIDDLECENTER);
+					}
+					x -= settings.padding;
+					y = settings.padding - y;
+					width = Math.round(width * scale);
+					height = Math.round(height * scale);
 				} else {
-					x = 0;
-					y = 0;
-					width = docWidth;
-					height = docHeightCropped = docHeight;
+					attachmentImage = scaleAttachmentImage(layer, trim, scale, sourceImage);
+					if (meshSource) output.scaledImage = attachmentImage;
+					x = attachmentImage.x;
+					y = -attachmentImage.y;
+					width = attachmentImage.width;
+					height = attachmentImage.height;
 				}
-				width = width * settings.scale + settings.padding * 2;
-				height = height * settings.scale + settings.padding * 2;
 
 				// Save image.
 				if (writeImages) {
-					scaleImage(settings.scale * scale);
-					if (settings.padding > 0) activeDocument.resizeCanvas(width * scale, height * scale, AnchorPosition.MIDDLECENTER);
-
 					var file = new File(imagesDir + attachmentPath + ".png");
 					file.parent.create();
 					savePNG(file);
-					restoreHistory();
 				}
+				restoreHistory();
 
 				if (layerCount < totalLayerCount) layer.hide();
 
-				var center = mesh ? 0 : 0.5;
-				x += Math.round(width) * center - settings.padding;
-				y = docHeightCropped - (y + Math.round(height) * center - settings.padding);
-				width = Math.round(width * scale);
-				height = Math.round(height * scale);
-
 				// Make relative to the Photoshop document ruler origin.
 				x -= xOffSet * settings.scale;
-				y -= docHeightCropped - yOffSet * settings.scale;
+				y += yOffSet * settings.scale;
 
 				if (bone) { // Make relative to parent bone.
 					x -= bone.x;
@@ -473,17 +510,29 @@ function run () {
 						json += '"type": "linkedmesh", "source": "' + mesh.placeholderName + '", "parent": "' + mesh.placeholderName + '", ';
 						if (mesh.skinName) json += '"skin": "' + mesh.skinName + '", ';
 					}
+					var meshWidth = width, meshHeight = height;
+					if (attachmentImage) {
+						meshWidth *= attachmentImage.scaleX;
+						meshHeight *= attachmentImage.scaleY;
+						x -= meshWidth / 2;
+						y += meshHeight / 2;
+					}
 					json += '"width": ' + width + ', "height": ' + height + ', "vertices": [ ';
-					json += (x + width) + ', ' + (y - height) + ', ';
-					json += x + ', ' + (y - height) + ', ';
+					json += (x + meshWidth) + ', ' + (y - meshHeight) + ', ';
+					json += x + ', ' + (y - meshHeight) + ', ';
 					json += x + ', ' + y + ', ';
-					json += (x + width) + ', ' + y + ' ], "uvs": [ 1, 1, 0, 1, 0, 0, 1, 0 ], "triangles": [ 1, 2, 3, 1, 3, 0 ], "hull": 4, "edges": [ 0, 2, 2, 4, 4, 6, 0, 6 ]';
+					json += (x + meshWidth) + ', ' + y + ' ], "uvs": [ 1, 1, 0, 1, 0, 0, 1, 0 ], "triangles": [ 1, 2, 3, 1, 3, 0 ], "hull": 4, "edges": [ 0, 2, 2, 4, 4, 6, 0, 6 ]';
 				} else {
 					json += '"x": ' + x + ', "y": ' + y + ', "width": ' + width + ', "height": ' + height;
-					if (scale != 1) json += ', "scaleX": ' + (1 / scale) + ', "scaleY": ' + (1 / scale);
+					if (attachmentImage.scaleX != 1) json += ', "scaleX": ' + attachmentImage.scaleX;
+					if (attachmentImage.scaleY != 1) json += ', "scaleY": ' + attachmentImage.scaleY;
 				}
 				json += ' },\n';
-				jsonSlot += json;
+				return output.json = json;
+			};
+			for (var i = skinLayers.length - 1; i >= 0; i--) {
+				jsonSlot += outputLayer(skinLayers[i]);
+				if (cancel) return;
 			}
 			if (jsonSlot) jsonSkin += tabs + quote(slotName) + ': {\n' + jsonSlot.substring(0, jsonSlot.length - 2) + '\n' + tabs + '\},\n';
 		}
@@ -1173,7 +1222,7 @@ function rulerOrigin (axis) {
 	var ref = new ActionReference();
 	ref.putProperty(cID("Prpr"), key);
 	ref.putEnumerated(cID("Dcmn"), cID("Ordn"), cID("Trgt"));
-	return executeActionGet(ref).getInteger(key) >> 16;
+	return executeActionGet(ref).getInteger(key) / 65536;
 }
 
 // Seems to not be available when the document has >= 500 layers.
@@ -1221,6 +1270,79 @@ function scaleImage (scale) {
 	if (scale == 1) return;
 	var imageSize = activeDocument.width.as("px") * scale;
 	activeDocument.resizeImage(UnitValue(imageSize, "px"), null, null, ResampleMethod.BICUBICAUTOMATIC);
+}
+
+function scaleAttachmentImage (layer, trim, scale, sourceImage) {
+	var bounds = sourceImage ? sourceImage.bounds : { left: layer.left, top: layer.top, right: layer.right, bottom: layer.bottom, width: layer.width, height: layer.height };
+	if (sourceImage) clipMeshImage(layer, bounds);
+	var width = activeDocument.width.as("px") * settings.scale, height = activeDocument.height.as("px") * settings.scale;
+	// Resize on the full canvas so trimmed frames share the same sampling grid.
+	scaleImage(settings.scale * scale);
+	var imageWidth = activeDocument.width.as("px"), imageHeight = activeDocument.height.as("px");
+	var scaleX = width / imageWidth, scaleY = height / imageHeight;
+	if (trim && !sourceImage) {
+		layer.boundsDirty = true;
+		layer.updateBounds();
+		layer.boundsDirty = true; // History restoration will restore the unscaled layer.
+	}
+
+	// Padding must not crop pixels when Photoshop rounds the proportional height differently.
+	var paddedWidth = imageWidth, paddedHeight = imageHeight;
+	if (settings.padding > 0) {
+		paddedWidth = Math.max(imageWidth, Math.round((width + settings.padding * 2) * scale));
+		paddedHeight = Math.max(imageHeight, Math.round((height + settings.padding * 2) * scale));
+	}
+	var padLeft = Math.floor((paddedWidth - imageWidth) / 2), padTop = Math.floor((paddedHeight - imageHeight) / 2);
+	// Split odd padding explicitly so the content offset is known.
+	if (padLeft || padTop) activeDocument.resizeCanvas(UnitValue(imageWidth + padLeft, "px"), UnitValue(imageHeight + padTop, "px"), AnchorPosition.BOTTOMRIGHT);
+	if (paddedWidth != imageWidth + padLeft || paddedHeight != imageHeight + padTop)
+		activeDocument.resizeCanvas(UnitValue(paddedWidth, "px"), UnitValue(paddedHeight, "px"), AnchorPosition.TOPLEFT);
+
+	var left = 0, top = 0;
+	if (trim) {
+		var right, bottom;
+		if (sourceImage) {
+			left = sourceImage.left;
+			top = sourceImage.top;
+			right = left + sourceImage.width;
+			bottom = top + sourceImage.height;
+		} else {
+			// Only keep a filtering border when padding is enabled.
+			var minPadding = settings.padding > 0 ? 1 : 0;
+			left = Math.max(0, Math.min(paddedWidth - 1, Math.floor(layer.left) + padLeft - Math.max(minPadding, padLeft)));
+			top = Math.max(0, Math.min(paddedHeight - 1, Math.floor(layer.top) + padTop - Math.max(minPadding, padTop)));
+			right = Math.max(left + 1, Math.min(paddedWidth, Math.ceil(layer.right) + padLeft + Math.max(minPadding, paddedWidth - imageWidth - padLeft)));
+			bottom = Math.max(top + 1, Math.min(paddedHeight, Math.ceil(layer.bottom) + padTop + Math.max(minPadding, paddedHeight - imageHeight - padTop)));
+		}
+		var originX = rulerOrigin("H"), originY = rulerOrigin("V");
+		activeDocument.crop([UnitValue(left - originX, "px"), UnitValue(top - originY, "px"),
+			UnitValue(right - originX, "px"), UnitValue(bottom - originY, "px")]);
+	}
+
+	var result = { left: left, top: top, width: activeDocument.width.as("px"), height: activeDocument.height.as("px"), scaleX: scaleX, scaleY: scaleY, bounds: bounds };
+	result.x = (left + result.width / 2 - padLeft) * scaleX;
+	result.y = (top + result.height / 2 - padTop) * scaleY;
+	return result;
+}
+
+function clipMeshImage (layer, bounds) {
+	var width = activeDocument.width.as("px"), height = activeDocument.height.as("px");
+	var left = Math.max(0, Math.floor(bounds.left)), top = Math.max(0, Math.floor(bounds.top));
+	var right = Math.min(width, Math.ceil(bounds.right)), bottom = Math.min(height, Math.ceil(bounds.bottom));
+	if (right <= left || bottom <= top) {
+		layer.select();
+		activeDocument.selection.selectAll();
+		activeDocument.selection.clear();
+		activeDocument.selection.deselect();
+		return;
+	}
+	var originX = rulerOrigin("H"), originY = rulerOrigin("V");
+	activeDocument.crop([UnitValue(left - originX, "px"), UnitValue(top - originY, "px"),
+		UnitValue(right - originX, "px"), UnitValue(bottom - originY, "px")]);
+	// Clip linked pixels to the original source bounds, then restore the common sampling canvas.
+	if (left || top) activeDocument.resizeCanvas(UnitValue(right, "px"), UnitValue(bottom, "px"), AnchorPosition.BOTTOMRIGHT);
+	if (right != width || bottom != height)
+		activeDocument.resizeCanvas(UnitValue(width, "px"), UnitValue(height, "px"), AnchorPosition.TOPLEFT);
 }
 
 var history;
