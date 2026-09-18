@@ -26,7 +26,224 @@ try {
 	originalDoc = activeDocument;
 } catch (ignored) {}
 
+// Localization. Keep tags, file names, JSON keys and Photoshop identifiers untranslated.
+var translations = {
+	en: {
+		languageName: "English",
+		language: "Language:",
+		automatic: "Automatic",
+		languageTooltip: "Automatic follows Photoshop's language. An explicit choice overrides it and is remembered (except in CS2).",
+		settings: "Settings",
+		ignoreHiddenLayers: " Ignore hidden layers",
+		ignoreBackground: " Ignore background layer",
+		trimWhitespace: " Trim whitespace",
+		writeJson: " Write Spine JSON",
+		writeTemplate: " Write template image",
+		selectionOnly: " Selection only",
+		scale: "Scale:",
+		padding: "Padding:",
+		outputPaths: "Output Paths",
+		images: "Images:",
+		json: "JSON:",
+		help: "Help",
+		ok: "OK",
+		cancel: "Cancel",
+		close: "Close",
+		templateTooltip: "When checked, a PNG is written for the currently visible layers.",
+		jsonTooltip: "When checked, a Spine JSON file is written.",
+		trimTooltip: "When checked, blank pixels around the edges of each image are removed.",
+		selectionTooltip: "When checked, only the selected items are processed.",
+		scaleTooltip: "Scales the PNG files. Useful when using higher resolution art in Photoshop than in Spine.",
+		paddingTooltip: "Blank pixels around the edge of each image. Can avoid aliasing artifacts for opaque pixels along the image edge.",
+		imagesTooltip: "The folder to write PNGs. Begin with \"./\" to be relative to the PSD file. Blank to disable writing PNGs.",
+		jsonPathTooltip: "Output JSON file if ending with \".json\", else the folder to write the JSON file. Begin with \"./\" to be relative to the PSD file. Blank to disable writing a JSON file.",
+		noJsonOutput: "<no JSON output>",
+		noImageOutput: "<no image output>",
+		minimumVersion: "Photoshop CS2 or later is required.",
+		noDocument: "Please open a document before running the PhotoshopToSpine script.",
+		saveDocument: "Please save the document before running the PhotoshopToSpine script.",
+		windowError: "\n\nScript is unable to create a Window. Your Photoshop installation may be broken and may need to be reinstalled.\n\n%1",
+		scaleRange: "Scale must be between > 0 and <= 400.",
+		paddingRange: "Padding must be >= 0.",
+		layerContext: "[layer %1] ",
+		unexpectedError: "An unexpected error has occurred:\n\n%1[line: %2] %3\n\nTo debug, run the PhotoshopToSpine script using Adobe ExtendScript with \"Debug > Do not break on guarded exceptions\" unchecked.\n\nv%4",
+		initializing: "Initializing...",
+		collectingLayers: "Collecting layers...",
+		processingLayers: "Processing layers...",
+		selectionRequired: "At least one layer must be selected when \"Selection only\" is checked.",
+		rgbRequired: "Please change the image mode to RGB color.",
+		invalidAttachmentName: "Layer name is not a valid attachment name:\n\n%1",
+		invalidScale: "Invalid scale %1:\n\n%2",
+		parentBones: "Multiple layers for the \"%1\" bone have different parent bones:\n\n%2\n%3",
+		defaultSkinReserved: "The skin name \"default\" is reserved:\n\n%1\n\nPlease use a different name.",
+		expectedAttachmentPrefix: "Expected attachment name \"%1\" to start with skin name: %2/",
+		duplicateSkinAttachment: "Multiple layers for the \"%1\" skin in the \"%2\" slot have the same name \"%3\":\n",
+		duplicateSlotAttachment: "Multiple layers for the \"%1\" slot have the same name \"%2\":\n",
+		renameDuplicates: "\n\nRename or use the [ignore] tag for these layers.",
+		sourceMeshNotFound: "Source mesh \"%1\" not found in slot \"%2\":\n\n%3\n\nPrepend the skin name, if any. For example:\nskinName/%1",
+		sourceNotMesh: "Layer \"%1\" is not a mesh:\n\n%2",
+		meshCycle: "Mesh sources form a cycle:\n\n%1",
+		seeOneError: "\n\nSee errors.txt for 1 additional error.",
+		seeErrors: "\n\nSee errors.txt for %1 additional errors.",
+		cantWriteOneError: "\n\nUnable to write 1 additional error to errors.txt.\n%1",
+		cantWriteErrors: "\n\nUnable to write %1 additional errors to errors.txt.\n%2",
+		invalidGroupName: "Invalid group name:\n\n%1",
+		invalidLayerName: "Invalid layer name:\n\n%1",
+		layerOnlyTag: "\n\nThe [%1] tag is only valid for layers, not for groups.",
+		groupOnlyTag: "\n\nThe [%1] tag is only valid for groups, not for layers.",
+		invalidTag: "\n\nThe [%1] tag is not a valid tag.",
+		invalidNamePattern: "The pattern for the [name:pattern] tag must contain an asterisk (*):\n\n%1",
+		cannotGetLayerProperty: "Unable to get layer %1 property: %2\n%3",
+		unknownType: "Unknown type: %1",
+		invalidSetting: "Invalid default setting: %1",
+		helpTitle: "PhotoshopToSpine - Help",
+		helpText: "This script writes layers as images and creates a JSON file to bring the images into Spine with the same positions and draw order they had in Photoshop.\n"
+			+ "\nThe Photoshop ruler origin corresponds to 0,0 in Spine.\n"
+			+ "\nTags in square brackets can be used anywhere in layer and group names to customize the output. If \":name\" is omitted, the layer or group name is used.\n"
+			+ "\nGroup and layer names:\n"
+			+ "•  [bone] or [bone:name]  Layers, slots, and bones are placed under a bone. The bone is created at the center of a visible layer. Bone groups can be nested.\n"
+			+ "•  [slot] or [slot:name]  Layers are placed in a slot.\n"
+			+ "•  [skin] or [skin:name]  Layers are placed in a skin. Skin layer images are output in a subfolder for the skin.\n"
+			+ "•  [scale:number]  Layers are scaled. Their attachments are scaled inversely, so they appear the same size in Spine.\n"
+			+ "•  [folder] or [folder:name]  Layer images are output in a subfolder. Folder groups can be nested.\n"
+			+ "•  [overlay]  This layer is used as a clipping mask for all layers below.\n"
+			+ "•  [trim] or [trim:false]  Force this layer to be whitespace trimmed or not.\n"
+			+ "•  [mesh] or [mesh:name]  Layer is a mesh or, when a name is specified, a linked mesh.\n"
+			+ "•  [ignore]  Layers, groups, and any child groups will not be output.\n"
+			+ "\nGroup names:\n"
+			+ "•  [merge]  Layers in the group are merged and a single image is output.\n"
+			+ "•  [name:pattern]  Adds a prefix or suffix to layer names in the group. The pattern must contain an asterisk (*).\n"
+			+ "\nLayer names:\n"
+			+ "•  The layer name is used for the attachment or skin placeholder name, relative to any parent [skin] or [folder] groups. Can contain / for subfolders.\n"
+			+ "•  [path:name]  Specifies the image file name, if it needs to be different from the attachment name. Can be used on a group with [merge].\n"
+			+ "\nIf a layer name, folder name, or path name starts with / then parent layers won't affect the name."
+	},
+	// Based on Guto's translation, integrated with permission: https://esotericsoftware.com/forum/d/28974
+	zh_CN: {
+		languageName: "中文（简体）",
+		language: "语言：",
+		automatic: "自动",
+		languageTooltip: "自动模式使用 Photoshop 的界面语言。手动选择的语言会覆盖自动设置并被记住（CS2 除外）。",
+		settings: "设置",
+		ignoreHiddenLayers: " 忽略隐藏图层",
+		ignoreBackground: " 忽略背景图层",
+		trimWhitespace: " 修剪透明像素",
+		writeJson: " 写入 Spine JSON 数据",
+		writeTemplate: " 创建完整预览图",
+		selectionOnly: " 仅限选中图层",
+		scale: "调整缩放：",
+		padding: "像素填充：",
+		outputPaths: "输出路径",
+		images: "图像：",
+		json: "JSON：",
+		help: "帮助",
+		ok: "确定",
+		cancel: "取消",
+		close: "关闭",
+		templateTooltip: "选中后，将当前可见图层导出为一张 PNG 图像。",
+		jsonTooltip: "选中后，生成 Spine JSON 文件。",
+		trimTooltip: "选中后，移除每张图像边缘的透明像素。",
+		selectionTooltip: "选中后，仅处理选中的项目。",
+		scaleTooltip: "缩放 PNG 文件。适用于 Photoshop 中的原图分辨率高于 Spine 所需分辨率的情况。",
+		paddingTooltip: "在每张图像的边缘添加透明像素，可避免图像边缘的不透明像素出现锯齿。",
+		imagesTooltip: "PNG 文件的输出文件夹。以 \"./\" 开头表示相对于 PSD 文件的位置。留空则不输出 PNG 文件。",
+		jsonPathTooltip: "以 \".json\" 结尾时指定输出 JSON 文件，否则指定其输出文件夹。以 \"./\" 开头表示相对于 PSD 文件的位置。留空则不输出 JSON 文件。",
+		noJsonOutput: "<不输出 JSON>",
+		noImageOutput: "<不输出图像>",
+		minimumVersion: "需要 Photoshop CS2 或更高版本。",
+		noDocument: "请先打开文档，再运行 PhotoshopToSpine 脚本。",
+		saveDocument: "请先保存文档，再运行 PhotoshopToSpine 脚本。",
+		windowError: "\n\n脚本无法创建窗口。您的 Photoshop 安装可能已损坏，需要重新安装。\n\n%1",
+		scaleRange: "缩放比例必须大于 0 且小于或等于 400。",
+		paddingRange: "像素填充必须大于或等于 0。",
+		layerContext: "[图层 %1] ",
+		unexpectedError: "发生了意外错误：\n\n%1[行号：%2] %3\n\n如需调试，请使用 Adobe ExtendScript 运行 PhotoshopToSpine 脚本，并取消勾选 \"Debug > Do not break on guarded exceptions\"。\n\nv%4",
+		initializing: "正在初始化…",
+		collectingLayers: "正在收集图层…",
+		processingLayers: "正在处理图层…",
+		selectionRequired: "勾选“仅限选中图层”时，必须至少选中一个图层。",
+		rgbRequired: "请将图像模式改为 RGB 颜色。",
+		invalidAttachmentName: "图层名称不是有效的附件名称：\n\n%1",
+		invalidScale: "无效的缩放值 %1：\n\n%2",
+		parentBones: "骨骼 \"%1\" 的多个图层具有不同的父骨骼：\n\n%2\n%3",
+		defaultSkinReserved: "皮肤名称 \"default\" 是保留名称：\n\n%1\n\n请使用其他名称。",
+		expectedAttachmentPrefix: "附件名称 \"%1\" 应以皮肤名称 %2/ 开头。",
+		duplicateSkinAttachment: "皮肤 \"%1\" 在插槽 \"%2\" 中有多个图层使用相同的名称 \"%3\"：\n",
+		duplicateSlotAttachment: "插槽 \"%1\" 中有多个图层使用相同的名称 \"%2\"：\n",
+		renameDuplicates: "\n\n请重命名这些图层，或为其添加 [ignore] 标签。",
+		sourceMeshNotFound: "在插槽 \"%2\" 中找不到源网格 \"%1\"：\n\n%3\n\n如果源网格属于某个皮肤，请在名称前加上皮肤名称。例如：\nskinName/%1",
+		sourceNotMesh: "图层 \"%1\" 不是网格：\n\n%2",
+		meshCycle: "网格源引用形成了循环：\n\n%1",
+		seeOneError: "\n\n另有 1 个错误，请查看 errors.txt。",
+		seeErrors: "\n\n另有 %1 个错误，请查看 errors.txt。",
+		cantWriteOneError: "\n\n无法将另外 1 个错误写入 errors.txt。\n%1",
+		cantWriteErrors: "\n\n无法将另外 %1 个错误写入 errors.txt。\n%2",
+		invalidGroupName: "无效的组名称：\n\n%1",
+		invalidLayerName: "无效的图层名称：\n\n%1",
+		layerOnlyTag: "\n\n[%1] 标签仅适用于图层，不适用于组。",
+		groupOnlyTag: "\n\n[%1] 标签仅适用于组，不适用于图层。",
+		invalidTag: "\n\n[%1] 不是有效的标签。",
+		invalidNamePattern: "[name:pattern] 标签的模式必须包含星号 (*)：\n\n%1",
+		cannotGetLayerProperty: "无法获取图层 %1 的属性：%2\n%3",
+		unknownType: "未知类型：%1",
+		invalidSetting: "无效的默认设置：%1",
+		helpTitle: "PhotoshopToSpine - 帮助",
+		helpText: "此脚本将图层分层导出成图像，并创建一个 JSON 文件，以便将图像以 Photoshop 中相同的位置和绘制顺序导入 Spine 中。\n"
+			+ "\nPhotoshop 中的标尺原点对应于 Spine 中的 0,0。\n"
+			+ "\n方括号中的标签可用于图层和组名称中的任何位置，以自定义输出。如果省略 \":name\"，则使用图层或组名称。\n"
+			+ "\n组和图层名称：\n"
+			+ "•  [bone] 或 [bone:name]  图层、插槽和骨骼放置在骨骼下。骨骼在可见图层的中心创建。骨骼组可以嵌套。\n"
+			+ "•  [slot] 或 [slot:name]  图层放置在插槽中。\n"
+			+ "•  [skin] 或 [skin:name]  图层放置在皮肤中。皮肤图层图像输出在皮肤的子文件夹中。\n"
+			+ "•  [scale:number]  图层缩放。其附件反向缩放，因此在 Spine 中显示大小相同。\n"
+			+ "•  [folder] 或 [folder:name]  图层图像输出在子文件夹中。文件夹组可以嵌套。\n"
+			+ "•  [overlay]  此图层用作所有下方图层的剪切蒙版。\n"
+			+ "•  [trim] 或 [trim:false]  强制此图层进行空白裁剪或不裁剪。\n"
+			+ "•  [mesh] 或 [mesh:name]  图层是一个网格，或者当指定名称时，是一个链接网格。\n"
+			+ "•  [ignore]  图层、组以及任何子组将不会被输出。\n"
+			+ "\n组名称：\n"
+			+ "•  [merge]  组内的图层将被合并，并输出为一张图像。\n"
+			+ "•  [name:pattern]  为组内的图层名称添加前缀或后缀。模式必须包含星号 (*)。\n"
+			+ "\n图层名称：\n"
+			+ "•  图层名称用于附件或皮肤占位符名称，相对于任何父 [skin] 或 [folder] 组。可以包含 / 以表示子文件夹。\n"
+			+ "•  [path:name]  指定图像文件名，如果需要与附件名称不同。可以在带有 [merge] 的组上使用。\n"
+			+ "\n如果图层名称、文件夹名称或路径名称以 / 开头，则父图层不会影响名称。"
+	}
+};
+var language = "en";
+
+function languageForLocale (locale) {
+	locale = locale.toLowerCase().replace(/-/g, "_");
+	for (var id in translations) {
+		if (translations.hasOwnProperty(id) && id.toLowerCase() == locale) return id;
+	}
+	if (locale == "zh" || /^zh_(cn|sg|hans)(_|$)/.test(locale)) return "zh_CN";
+	var base = locale.split("_")[0];
+	return translations.hasOwnProperty(base) ? base : "en";
+}
+
+function selectLanguage () {
+	if (settings.language != "auto" && !translations.hasOwnProperty(settings.language)) settings.language = "auto";
+	language = settings.language;
+	if (language == "auto") {
+		var locale;
+		try {
+			locale = app.locale;
+		} catch (ignored) {}
+		language = languageForLocale(locale || $.locale || "");
+	}
+}
+
+function tr (key) {
+	var text = translations[language][key];
+	if (text === undefined) text = translations.en[key];
+	var args = arguments;
+	return text.replace(/%([1-9][0-9]*)/g, function (match, index) { return args[parseInt(index, 10)]; });
+}
+
+// Settings.
 var defaultSettings = {
+	language: "auto",
 	ignoreHiddenLayers: false,
 	ignoreBackground: true,
 	writeTemplate: false,
@@ -39,6 +256,7 @@ var defaultSettings = {
 	jsonPath: "./",
 };
 loadSettings();
+selectLanguage();
 
 function run () {
 	showProgress();
@@ -47,7 +265,7 @@ function run () {
 	if (settings.selectionOnly) {
 		selectedLayers = getSelectedLayers();
 		if (!selectedLayers.length) {
-			alert("At least one layer must be selected when \"Selection only\" is checked.");
+			alert(tr("selectionRequired"));
 			return;
 		}
 	}
@@ -77,7 +295,7 @@ function run () {
 		convertToRGB();
 	} catch (ignored) {}
 	if (activeDocument.mode != DocumentMode.RGB) {
-		alert("Please change the image mode to RGB color.");
+		alert(tr("rgbRequired"));
 		return;
 	}
 
@@ -112,7 +330,7 @@ function run () {
 		total: 0
 	};
 	initializeLayers(context, selectedLayers, null, rootLayers);
-	showProgress("Collecting layers...", context.total);
+	showProgress(tr("collectingLayers"), context.total);
 	collectLayers(rootLayers, layers, []);
 
 	// Store the bones, slot names, and layers for each skin.
@@ -132,7 +350,7 @@ function run () {
 		if (!name) continue;
 		name = name.replace(/^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$/i, ""); // Windows.
 		if (!name || name.length > 255) {
-			error("Layer name is not a valid attachment name:\n\n" + layer.name);
+			error(tr("invalidAttachmentName", layer.name));
 			continue;
 		}
 
@@ -154,7 +372,7 @@ function run () {
 		var scale = layer.findTagValue("scale:");
 		if (!scale) scale = 1;
 		layer.scale = parseFloat(scale);
-		if (isNaN(layer.scale)) error("Invalid scale " + scale + ":\n\n" + layer.path());
+		if (isNaN(layer.scale)) error(tr("invalidScale", scale, layer.path()));
 
 		var bone = null, boneLayer = layer.findTagLayer("bone");
 		if (boneLayer) {
@@ -163,9 +381,7 @@ function run () {
 			bone = get(bones, boneName);
 			if (bone) {
 				if (parent != bone.parent) {
-					error("Multiple layers for the \"" + boneName + "\" bone have different parent bones:\n\n"
-						+ bone.layer.path() + "\n"
-						+ boneLayer.path());
+					error(tr("parentBones", boneName, bone.layer.path(), boneLayer.path()));
 					continue;
 				}
 			} else {
@@ -192,7 +408,7 @@ function run () {
 			else if (skinLayer.parent)
 				skinName = skinLayer.parent.folders("") + skinName;
 			if (skinName && skinName.toLowerCase() == "default") {
-				error("The skin name \"default\" is reserved:\n\n" + layer.path() + "\n\nPlease use a different name.");
+				error(tr("defaultSkinReserved", layer.path()));
 				continue;
 			}
 		}
@@ -202,7 +418,7 @@ function run () {
 		if (skinName == "default")
 			layer.placeholderName = layer.attachmentName;
 		else if (!startsWith(layer.attachmentName, skinName + "/")) { // Should never happen.
-			error("Expected attachment name \"" + layer.attachmentName + "\" to start with skin name: " + skinName + "/");
+			error(tr("expectedAttachmentPrefix", layer.attachmentName, skinName));
 			continue;
 		} else
 			layer.placeholderName = layer.attachmentName.substring(skinName.length + 1);
@@ -260,11 +476,10 @@ function run () {
 	for (var key in skinDuplicates) {
 		if (!skinDuplicates.hasOwnProperty(key)) continue;
 		var layers = skinDuplicates[key];
-		var message = "Multiple layers for the \"" + layers[0].skinName + "\" skin in the \"" + layers[0].slotName
-			+ "\" slot have the same name \"" + layers[0].placeholderName + "\":\n";
+		var message = tr("duplicateSkinAttachment", layers[0].skinName, layers[0].slotName, layers[0].placeholderName);
 		for (var i = 0, n = layers.length; i < n; i++)
 			message += "\n" + layers[i].path();
-		error(message + "\n\nRename or use the [ignore] tag for these layers.");
+		error(message + tr("renameDuplicates"));
 	}
 
 	var slotDuplicates = {};
@@ -281,12 +496,11 @@ function run () {
 			if (layer.mesh === true) continue;
 			var source = get(layers, layer.mesh);
 			if (!source) {
-				error("Source mesh \"" + layer.mesh + "\" not found in slot \"" + stripName(slotName) + "\":\n\n"
-					+ layer.path() + "\n\nPrepend the skin name, if any. For example:\nskinName/" + layer.mesh);
+				error(tr("sourceMeshNotFound", layer.mesh, stripName(slotName), layer.path()));
 				continue;
 			}
 			if (!source.mesh) {
-				error("Layer \"" + source.path() + "\" is not a mesh:\n\n" + layer.path());
+				error(tr("sourceNotMesh", source.path(), layer.path()));
 				continue;
 			}
 			layer.mesh = source;
@@ -316,10 +530,10 @@ function run () {
 	for (var slotName in slotDuplicates) {
 		if (!slotDuplicates.hasOwnProperty(slotName)) continue;
 		var layers = slotDuplicates[slotName];
-		var message = "Multiple layers for the \"" + layers[0].slotName + "\" slot have the same name \"" + layers[0].placeholderName + "\":\n";
+		var message = tr("duplicateSlotAttachment", layers[0].slotName, layers[0].placeholderName);
 		for (var i = 0, n = layers.length; i < n; i++)
 			message += "\n" + layers[i].path();
-		error(message + "\n\nRename or use the [ignore] tag for these layers.");
+		error(message + tr("renameDuplicates"));
 	}
 
 	if (!errors.length) {
@@ -333,7 +547,7 @@ function run () {
 				var source = layer, visited = [];
 				while (source.mesh !== true) {
 					if (indexOf(visited, source) != -1) {
-						error("Mesh sources form a cycle:\n\n" + layer.path());
+						error(tr("meshCycle", layer.path()));
 						break;
 					}
 					visited.push(source);
@@ -364,14 +578,14 @@ function run () {
 				file.write(all);
 				file.close();
 				if (n == 2)
-					first += "\n\nSee errors.txt for 1 additional error.";
+					first += tr("seeOneError");
 				else
-					first += "\n\nSee errors.txt for " + (n - 1) + " additional errors.";
+					first += tr("seeErrors", n - 1);
 			} catch (e) {
 				if (n == 2)
-					first += "\n\nUnable to write 1 additional error to errors.text.\n"+e;
+					first += tr("cantWriteOneError", e);
 				else
-					first += "\n\nUnable to write " + (n - 1) + " additional errors to errors.txt.\n"+e;
+					first += tr("cantWriteErrors", n - 1, e);
 			}
 		}
 		alert(first);
@@ -381,7 +595,7 @@ function run () {
 
 	// Add a history item to prevent layer visibility from changing by restoreHistory.
 	topLayer.name = "Processing layers...";
-	showProgress("Processing layers...", totalLayerCount);
+	showProgress(tr("processingLayers"), totalLayerCount);
 
 	// Output skins.
 	var jsonSkins = "", layerCount = 0, writeImages = settings.imagesDir, tabs = legacyJson ? '\t\t' : '\t\t\t';
@@ -619,26 +833,36 @@ function run () {
 
 function showSettingsDialog () {
 	if (parseInt(app.version) < 9) {
-		alert("Photoshop CS2 or later is required.");
+		alert(tr("minimumVersion"));
 		return;
 	}
 	if (!originalDoc) {
-		alert("Please open a document before running the PhotoshopToSpine script.");
+		alert(tr("noDocument"));
 		return;
 	}
 	try {
 		decodeURI(activeDocument.path);
 	} catch (e) {
-		alert("Please save the document before running the PhotoshopToSpine script.");
+		alert(tr("saveDocument"));
 		return;
 	}
 
 	// Layout.
+	var localized = [];
+	function text (parent, type, key, properties) {
+		var control = parent.add(type, undefined, tr(key), properties);
+		localized.push({control: control, key: key, property: "text"});
+		return control;
+	}
+	function tooltip (control, key) {
+		control.helpTip = tr(key);
+		localized.push({control: control, key: key, property: "helpTip"});
+	}
 	var dialog, group;
 	try {
 		dialog = new Window("dialog", "PhotoshopToSpine v" + scriptVersion);
 	} catch (e) {
-		throw new Error("\n\nScript is unable to create a Window. Your Photoshop installation may be broken and may need to be reinstalled.\n\n" + e.message);
+		throw new Error(tr("windowError", e.message));
 	}
 	dialog.alignChildren = "fill";
 
@@ -646,7 +870,19 @@ function showSettingsDialog () {
 		dialog.add("image", undefined, new File(scriptDir() + "logo.png"));
 	} catch (ignored) {}
 
-	var settingsGroup = dialog.add("panel", undefined, "Settings");
+	var languageGroup = dialog.add("group");
+	text(languageGroup, "statictext", "language");
+	var languageSelect = languageGroup.add("dropdownlist"), languageIDs = ["auto"];
+	languageSelect.add("item", tr("automatic"));
+	for (var id in translations) {
+		if (!translations.hasOwnProperty(id)) continue;
+		languageIDs.push(id);
+		languageSelect.add("item", translations[id].languageName);
+	}
+	languageSelect.selection = indexOf(languageIDs, settings.language);
+	tooltip(languageSelect, "languageTooltip");
+
+	var settingsGroup = text(dialog, "panel", "settings");
 		settingsGroup.margins = [10,15,10,10];
 		settingsGroup.alignChildren = "fill";
 		var checkboxGroup = settingsGroup.add("group");
@@ -655,21 +891,21 @@ function showSettingsDialog () {
 			group = checkboxGroup.add("group");
 				group.orientation = "column";
 				group.alignChildren = ["left", ""];
-				var ignoreHiddenLayersCheckbox = group.add("checkbox", undefined, " Ignore hidden layers");
+				var ignoreHiddenLayersCheckbox = text(group, "checkbox", "ignoreHiddenLayers");
 				ignoreHiddenLayersCheckbox.value = settings.ignoreHiddenLayers;
-				var ignoreBackgroundCheckbox = group.add("checkbox", undefined, " Ignore background layer");
+				var ignoreBackgroundCheckbox = text(group, "checkbox", "ignoreBackground");
 				ignoreBackgroundCheckbox.value = settings.ignoreBackground;
-				var trimWhitespaceCheckbox = group.add("checkbox", undefined, " Trim whitespace");
+				var trimWhitespaceCheckbox = text(group, "checkbox", "trimWhitespace");
 				trimWhitespaceCheckbox.value = settings.trimWhitespace;
 			group = checkboxGroup.add("group");
 				group.orientation = "column";
 				group.alignChildren = ["left", ""];
 				group.alignment = ["", "top"];
-				var writeJsonCheckbox = group.add("checkbox", undefined, " Write Spine JSON");
+				var writeJsonCheckbox = text(group, "checkbox", "writeJson");
 				writeJsonCheckbox.value = settings.writeJson;
-				var writeTemplateCheckbox = group.add("checkbox", undefined, " Write template image");
+				var writeTemplateCheckbox = text(group, "checkbox", "writeTemplate");
 				writeTemplateCheckbox.value = settings.writeTemplate;
-				var selectionOnlyCheckbox = group.add("checkbox", undefined, " Selection only");
+				var selectionOnlyCheckbox = text(group, "checkbox", "selectionOnly");
 				selectionOnlyCheckbox.value = settings.selectionOnly;
 		var scaleText, paddingText, scaleSlider, paddingSlider;
 		if (!cs2) {
@@ -677,8 +913,8 @@ function showSettingsDialog () {
 				group = slidersGroup.add("group");
 					group.orientation = "column";
 					group.alignChildren = ["right", ""];
-					group.add("statictext", undefined, "Scale:");
-					group.add("statictext", undefined, "Padding:");
+					text(group, "statictext", "scale");
+					text(group, "statictext", "padding");
 				group = slidersGroup.add("group");
 					group.orientation = "column";
 					scaleText = group.add("edittext", undefined, settings.scale * 100);
@@ -697,12 +933,12 @@ function showSettingsDialog () {
 					paddingSlider = group.add("slider", undefined, settings.padding, 0, 4);
 		} else {
 			group = settingsGroup.add("group");
-				group.add("statictext", undefined, "Scale:");
+				text(group, "statictext", "scale");
 				scaleText = group.add("edittext", undefined, settings.scale * 100);
 				scaleText.preferredSize.width = 50;
 			scaleSlider = settingsGroup.add("slider", undefined, settings.scale * 100, 1, 400);
 			group = settingsGroup.add("group");
-				group.add("statictext", undefined, "Padding:");
+				text(group, "statictext", "padding");
 				paddingText = group.add("edittext", undefined, settings.padding);
 				paddingText.preferredSize.width = 50;
 			paddingSlider = settingsGroup.add("slider", undefined, settings.padding, 0, 4);
@@ -717,7 +953,7 @@ function showSettingsDialog () {
 		selectionOnlyCheckbox.preferredSize.width = 150;
 	}
 
-	var outputPathGroup = dialog.add("panel", undefined, "Output Paths");
+	var outputPathGroup = text(dialog, "panel", "outputPaths");
 		outputPathGroup.alignChildren = ["fill", ""];
 		outputPathGroup.margins = [10,15,10,10];
 		var imagesDirText, imagesDirPreview, jsonPathText, jsonPathPreview;
@@ -726,13 +962,13 @@ function showSettingsDialog () {
 			textGroup.orientation = "column";
 			textGroup.alignChildren = ["fill", ""];
 			group = textGroup.add("group");
-				group.add("statictext", undefined, "Images:");
+				text(group, "statictext", "images");
 				imagesDirText = group.add("edittext", undefined, settings.imagesDir);
 				imagesDirText.alignment = ["fill", ""];
 			imagesDirPreview = textGroup.add("statictext", undefined, "");
 			imagesDirPreview.maximumSize.width = 260;
 			group = textGroup.add("group");
-				var jsonLabel = group.add("statictext", undefined, "JSON:");
+				var jsonLabel = text(group, "statictext", "json");
 				jsonLabel.justify = "right";
 				jsonLabel.minimumSize.width = 41;
 				jsonPathText = group.add("edittext", undefined, settings.jsonPath);
@@ -740,31 +976,31 @@ function showSettingsDialog () {
 			jsonPathPreview = textGroup.add("statictext", undefined, "");
 			jsonPathPreview.maximumSize.width = 260;
 		} else {
-			outputPathGroup.add("statictext", undefined, "Images:");
+			text(outputPathGroup, "statictext", "images");
 			imagesDirText = outputPathGroup.add("edittext", undefined, settings.imagesDir);
 			imagesDirText.alignment = "fill";
-			outputPathGroup.add("statictext", undefined, "JSON:");
+			text(outputPathGroup, "statictext", "json");
 			jsonPathText = outputPathGroup.add("edittext", undefined, settings.jsonPath);
 			jsonPathText.alignment = "fill";
 		}
 	var buttonGroup = dialog.add("group");
 		var helpButton;
-		if (!cs2) helpButton = buttonGroup.add("button", undefined, "Help");
+		if (!cs2) helpButton = text(buttonGroup, "button", "help");
 		group = buttonGroup.add("group");
 			group.alignment = ["fill", ""];
 			group.alignChildren = ["right", ""];
-			var runButton = group.add("button", undefined, "OK");
-			var cancelButton = group.add("button", undefined, "Cancel");
+			var runButton = text(group, "button", "ok", {name: "ok"});
+			var cancelButton = text(group, "button", "cancel", {name: "cancel"});
 
 	// Tooltips.
-	writeTemplateCheckbox.helpTip = "When checked, a PNG is written for the currently visible layers.";
-	writeJsonCheckbox.helpTip = "When checked, a Spine JSON file is written.";
-	trimWhitespaceCheckbox.helpTip = "When checked, blank pixels around the edges of each image are removed.";
-	selectionOnlyCheckbox.helpTip = "When checked, only the selected items are processed.";
-	scaleSlider.helpTip = "Scales the PNG files. Useful when using higher resolution art in Photoshop than in Spine.";
-	paddingSlider.helpTip = "Blank pixels around the edge of each image. Can avoid aliasing artifacts for opaque pixels along the image edge.";
-	imagesDirText.helpTip = "The folder to write PNGs. Begin with \"./\" to be relative to the PSD file. Blank to disable writing PNGs.";
-	jsonPathText.helpTip = "Output JSON file if ending with \".json\", else the folder to write the JSON file. Begin with \"./\" to be relative to the PSD file. Blank to disable writing a JSON file.";
+	tooltip(writeTemplateCheckbox, "templateTooltip");
+	tooltip(writeJsonCheckbox, "jsonTooltip");
+	tooltip(trimWhitespaceCheckbox, "trimTooltip");
+	tooltip(selectionOnlyCheckbox, "selectionTooltip");
+	tooltip(scaleSlider, "scaleTooltip");
+	tooltip(paddingSlider, "paddingTooltip");
+	tooltip(imagesDirText, "imagesTooltip");
+	tooltip(jsonPathText, "jsonPathTooltip");
 
 	// Events.
 	scaleText.onChanging = function () { scaleSlider.value = scaleText.text; };
@@ -778,7 +1014,7 @@ function showSettingsDialog () {
 	};
 	if (!cs2) helpButton.onClick = showHelpDialog;
 	jsonPathText.onChanging = function () {
-		var text = jsonPathText.text ? jsonPath(jsonPathText.text) : "<no JSON output>";
+		var text = jsonPathText.text ? jsonPath(jsonPathText.text) : tr("noJsonOutput");
 		if (!cs2) {
 			jsonPathPreview.text = text;
 			jsonPathPreview.helpTip = text;
@@ -786,12 +1022,32 @@ function showSettingsDialog () {
 			jsonPathText.helpTip = text;
 	};
 	imagesDirText.onChanging = function () {
-		var text = imagesDirText.text ? absolutePath(imagesDirText.text) : "<no image output>";
+		var text = imagesDirText.text ? absolutePath(imagesDirText.text) : tr("noImageOutput");
 		if (!cs2) {
 			imagesDirPreview.text = text;
 			imagesDirPreview.helpTip = text;
 		} else
 			imagesDirText.helpTip = text;
+	};
+
+	languageSelect.onChange = function () {
+		var choice = languageIDs[languageSelect.selection.index];
+		if (choice == settings.language) return;
+		settings.language = choice;
+		selectLanguage();
+		saveSettings();
+		var jsonHint = jsonPathText.helpTip, imagesHint = imagesDirText.helpTip;
+		for (var i = 0; i < localized.length; i++) {
+			var entry = localized[i];
+			entry.control[entry.property] = tr(entry.key);
+		}
+		languageSelect.items[0].text = tr("automatic");
+		// Paths are not localized; don't reparse unfinished input.
+		if (!jsonPathText.text) jsonPathText.onChanging();
+		else if (cs2) jsonPathText.helpTip = jsonHint;
+		if (!imagesDirText.text) imagesDirText.onChanging();
+		else if (cs2) imagesDirText.helpTip = imagesHint;
+		dialog.layout.layout(true);
 	};
 
 	// Run now.
@@ -818,17 +1074,18 @@ function showSettingsDialog () {
 
 	runButton.onClick = function () {
 		if (scaleText.text <= 0 || scaleText.text > 400) {
-			alert("Scale must be between > 0 and <= 400.");
+			alert(tr("scaleRange"));
 			return;
 		}
 		if (paddingText.text < 0) {
-			alert("Padding must be >= 0.");
+			alert(tr("paddingRange"));
 			return;
 		}
 
 		updateSettings();
 		saveSettings();
 
+		languageSelect.enabled = false;
 		ignoreHiddenLayersCheckbox.enabled = false;
 		ignoreBackgroundCheckbox.enabled = false;
 		writeTemplateCheckbox.enabled = false;
@@ -852,10 +1109,9 @@ function showSettingsDialog () {
 			run();
 			//alert((new Date().getTime() - start) / 1000 + "s");
 		} catch (e) {
-			if (e.message == "User cancelled the operation") return;
-			var layerMessage = lastLayerName ? "[layer " + lastLayerName + "] " : "";
-			alert("An unexpected error has occurred:\n\n" + layerMessage + "[line: " + e.line + "] " + e.message
-				+ "\n\nTo debug, run the PhotoshopToSpine script using Adobe ExtendScript with \"Debug > Do not break on guarded exceptions\" unchecked.\n\nv" + scriptVersion);
+			if (e.number == 8007 || e.message == "User cancelled the operation") return;
+			var layerMessage = lastLayerName ? tr("layerContext", lastLayerName) : "";
+			alert(tr("unexpectedError", layerMessage, e.line, e.message, scriptVersion));
 			debugger;
 		} finally {
 			if (activeDocument != originalDoc) activeDocument.close(SaveOptions.DONOTSAVECHANGES);
@@ -902,48 +1158,21 @@ function getOptionType (value) {
 	case "string": return "String";
 	case "number": return "Double";
 	};
-	throw new Error("Invalid default setting: " + value);
+	throw new Error(tr("invalidSetting", value));
 }
 
 // Help dialog.
 
 function showHelpDialog () {
-	var dialog = new Window("dialog", "PhotoshopToSpine - Help");
+	var dialog = new Window("dialog", tr("helpTitle"));
 	dialog.alignChildren = ["fill", ""];
 	dialog.orientation = "column";
 	dialog.alignment = ["", "top"];
 
-	var helpText = dialog.add("statictext", undefined, ""
-		+ "This script writes layers as images and creates a JSON file to bring the images into Spine with the same positions and draw order they had in Photoshop.\n"
-		+ "\n"
-		+ "The Photoshop ruler origin corresponds to 0,0 in Spine.\n"
-		+ "\n"
-		+ "Tags in square brackets can be used anywhere in layer and group names to customize the output. If \":name\" is omitted, the layer or group name is used.\n"
-		+ "\n"
-		+ "Group and layer names:\n"
-		+ "•  [bone] or [bone:name]  Layers, slots, and bones are placed under a bone. The bone is created at the center of a visible layer. Bone groups can be nested.\n"
-		+ "•  [slot] or [slot:name]  Layers are placed in a slot.\n"
-		+ "•  [skin] or [skin:name]  Layers are placed in a skin. Skin layer images are output in a subfolder for the skin.\n"
-		+ "•  [scale:number]  Layers are scaled. Their attachments are scaled inversely, so they appear the same size in Spine.\n"
-		+ "•  [folder] or [folder:name]  Layer images are output in a subfolder. Folder groups can be nested.\n"
-		+ "•  [overlay]  This layer is used as a clipping mask for all layers below.\n"
-		+ "•  [trim] or [trim:false]  Force this layer to be whitespace trimmed or not.\n"
-		+ "•  [mesh] or [mesh:name]  Layer is a mesh or, when a name is specified, a linked mesh.\n"
-		+ "•  [ignore]  Layers, groups, and any child groups will not be output.\n"
-		+ "\n"
-		+ "Group names:\n"
-		+ "•  [merge]  Layers in the group are merged and a single image is output.\n"
-		+ "•  [name:pattern]  Adds a prefix or suffix to layer names in the group. The pattern must contain an asterisk (*).\n"
-		+ "\n"
-		+ "Layer names:\n"
-		+ "•  The layer name is used for the attachment or skin placeholder name, relative to any parent [skin] or [folder] groups. Can contain / for subfolders.\n"
-		+ "•  [path:name]  Specifies the image file name, if it needs to be different from the attachment name. Can be used on a group with [merge].\n"
-		+ "\n"
-		+ "If a layer name, folder name, or path name starts with / then parent layers won't affect the name."
-	, {multiline: true});
+	var helpText = dialog.add("statictext", undefined, tr("helpText"), {multiline: true});
 	helpText.preferredSize.width = 325;
 
-	var closeButton = dialog.add("button", undefined, "Close");
+	var closeButton = dialog.add("button", undefined, tr("close"), {name: "ok"});
 	closeButton.alignment = ["center", ""];
 
 	closeButton.onClick = function () {
@@ -963,14 +1192,14 @@ function showProgress (title, total) {
 		dialog.alignChildren = "fill";
 		dialog.orientation = "column";
 
-		var message = dialog.add("statictext", undefined, "Initializing...");
+		var message = dialog.add("statictext", undefined, tr("initializing"));
 
 		var group = dialog.add("group");
 			var bar = group.add("progressbar");
 			bar.preferredSize = [300, 16];
 			bar.maxvalue = total;
 			bar.value = 1;
-			var cancelButton = group.add("button", undefined, "Cancel");
+			var cancelButton = group.add("button", undefined, tr("cancel"), {name: "cancel"});
 
 		cancelButton.onClick = function () {
 			cancel = true;
@@ -1078,20 +1307,20 @@ function collectLayers (parentLayers, collect, overlays) {
 			var tag = matches[1];
 			if (layer.isGroup) {
 				if (!isValidGroupTag(tag)) {
-					var message = "Invalid group name:\n\n" + layer.name;
+					var message = tr("invalidGroupName", layer.name);
 					if (isValidLayerTag(tag))
-						message += "\n\nThe [" + tag + "] tag is only valid for layers, not for groups.";
+						message += tr("layerOnlyTag", tag);
 					else
-						message += "\n\nThe [" + tag + "] tag is not a valid tag.";
+						message += tr("invalidTag", tag);
 					error(message);
 					continue outer;
 				}
 			} else if (tag != "merge" && !isValidLayerTag(tag)) { // Allow merge, the user may have merged manually to save time.
-				var message = "Invalid layer name:\n\n" + layer.name;
+				var message = tr("invalidLayerName", layer.name);
 				if (isValidGroupTag(tag))
-					message += "\n\nThe [" + tag + "] tag is only valid for groups, not for layers.";
+					message += tr("groupOnlyTag", tag);
 				else
-					message += "\n\nThe [" + tag + "] tag is not a valid tag.";
+					message += tr("invalidTag", tag);
 				error(message);
 				continue outer;
 			}
@@ -1469,7 +1698,7 @@ function typeToMethod (type) {
 	if (type == "DescValueType.BOOLEANTYPE") return "Boolean";
 	if (type == "DescValueType.LISTTYPE") return "List";
 	if (type == "DescValueType.REFERENCETYPE") return "Reference";
-	throw new Error("Unknown type: " + type);
+	throw new Error(tr("unknownType", type));
 }
 
 // Example:
@@ -1543,7 +1772,7 @@ Layer.prototype.get = function (name, type, error) {
 		return executeActionGet(ref)["get" + type](property);
 	} catch (e) {
 		if (error) return error();
-		e.message = "Unable to get layer " + this + " property: " + name + "\n" + e.message;
+		e.message = tr("cannotGetLayerProperty", this, name, e.message);
 		throw e;
 	}
 };
@@ -1717,7 +1946,7 @@ Layer.prototype.applyNamePatterns = function (name) {
 	if (namePattern) {
 		var asterisk = namePattern.indexOf("*");
 		if (asterisk == -1) {
-			error("The pattern for the [name:pattern] tag must contain an asterisk (*):\n\n" + layer.name);
+			error(tr("invalidNamePattern", layer.name));
 			return null;
 		}
 		name = namePattern.substring(0, asterisk) + name + namePattern.substring(asterisk + 1);
